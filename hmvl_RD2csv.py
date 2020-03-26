@@ -13,25 +13,26 @@ import csv
 @click.option("--f", default="RD297_200", help="Nom du fichier hmvl VRU RDxxx.")
 def lirehmvl(f):
 	with open(f,'r') as ff, open(f+".csv",'w') as fcsv:
-		header=["dt_texte","dt_unix","indexstn","status","voie","centiemes","vitesse","longueur"]
+		header=["dt_texte","dt_unix","indexstn","status","voie","vitesse","longueur"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		fwriter.writerow(header)
 		# header : horodate en clair et en temps unix
 		dt_texte=ff.readline()[:-1]
-		dt_unix=datetime.datetime.fromtimestamp(int(ff.readline()[0:10])).isoformat()
+		dt_unix0=datetime.datetime.fromtimestamp(float(ff.readline()[0:10]))
 		# une ligne par trame hmvl
 		for ligne in ff:
 			indexstn=ligne[0:3]
 			etatstn=ligne[4]
 			n=(len(ligne)-6)//11
+			## todo : ajouter une ligne sans mesure pour garder traces des trames vides pour des diagnostics
 			if n==0: continue
 			for i in range(n):
 				c11=ligne[6+i*11:17+i*11]
 				numvoie=c11[0]
-				dt_cs=c11[1:5]
+				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1:3]),microseconds=int(c11[3:5])*10000)
 				v=c11[5:8]
 				l=c11[8:13]
-				mesure=[dt_texte,dt_unix,indexstn,etatstn,numvoie,dt_cs,v,l]
+				mesure=[dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,v,l]
 				fwriter.writerow(mesure)
 
 if __name__ == '__main__':
