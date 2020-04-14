@@ -68,7 +68,14 @@ def lirehmvl(f,u,p):
 		port="5432", database="hmvl")
 	cursor = connection.cursor()
 	psycopg2.extras.execute_values(cursor,postgres_insert_query, liste_mesures,page_size=1000)
-	print("Insertion de "+str(len(liste_mesures))+" lignes pour "+f)
+	connection.commit()
+	cursor.close()
+	# enregistrement de la lecture effectuée dans la table Log_imports
+	cursor = connection.cursor()
+	postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes) VALUES %s"
+	nmesures=len(liste_mesures)
+	print("Insertion de "+str(nmesures)+" lignes pour "+f)
+	log_import=(f,datetime.datetime.now(),nmesures)
 	connection.commit()
 	cursor.close()
 	connection.close()
