@@ -21,19 +21,22 @@ def lirehmvl(f):
 		dt_unix0=datetime.datetime.fromtimestamp(float(ff.readline()[0:10]))
 		# une ligne par trame hmvl
 		for ligne in ff:
-			indexstn=ligne[0:3]
+			indexstn=ligne[0:4]
 			etatstn=ligne[4]
 			n=(len(ligne)-6)//11
-			## todo : ajouter une ligne sans mesure pour garder traces des trames vides pour des diagnostics
-			if n==0: continue
+			# pour une ligne sans mesure on garde traces des trames vides, pour des diagnostics
+			if n==0:
+				mesure = [dt_texte,dt_unix0.isoformat(),indexstn,etatstn,"","",""]
+				fwriter.writerow(mesure)
 			for i in range(n):
 				c11=ligne[6+i*11:17+i*11]
 				numvoie=c11[0]
 				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1:3]),microseconds=int(c11[3:5])*10000)
 				v=c11[5:8]
-				l=c11[8:13]
+				l=c11[8:11]
 				mesure=[dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,v,l]
 				fwriter.writerow(mesure)
 
 if __name__ == '__main__':
 	lirehmvl()
+
