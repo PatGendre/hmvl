@@ -17,7 +17,7 @@ import psycopg2.extras
 #@click.command()
 #@click.option("--jour", default="2020-04-02", help="Jour à importer dans postgresql AAAA-MM-JJ.")
 #@click.option("--p",help="mot de passe")
-def lirehmvl(f,u,p,stations,log=False):
+def lirehmvl2pg(f,u,p,stations,log=False):
 	with open(f,'r') as ff:
 		# header du fichier RD: horodate en clair et en temps unix
 		# u, p : user password d'accès à la BD postgres hmvl
@@ -170,21 +170,22 @@ def lirelabocom(f,u,p):
 	cursor = connection.cursor()
 	postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes) VALUES %s"
 	nmesures=len(liste_mesures)
-	print("Insertion de "+str(nmesures)+" lignes pour "+f)
+	print(str(datetime.datetime.now())," Insertion de "+str(nmesures)+" lignes pour "+f)
 	log_import=(f,datetime.datetime.now(),nmesures)
 	connection.commit()
 	cursor.close()
 	connection.close()
 
 from pathlib import Path
-def jourhmvl2pg(jour,pwd,racine=".."):
+def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 	# code factorisé pour rdc_0 et rdc_1 : rdc est 'rdc_0' ou 'rdc_1'
-	def lirerdc(jour,rep,pwd,rdc,stations,racine=".."):
+	def lirerdc(jour,rep,pwd,rdc,stations,racine="..",exportcsv=False):
 		# jour nom du répertoire AAAA-MM-JJ
 		# rep nom du sous répetoire HH-MM
 		# pwd mot de passe de la base hmvl postgresql
 		# rdc : "rdc_0" ou "rdc_1" pour les 2 frontaux de recueil de données VRU
 		# racine : chemin initial pour aboutir au répertoire jour depuis l'exécution du code
+		# exportcsv=True appelle lirehmvl2csv au lieu de lirehmvl2pg
 		path0=Path(racine)
 		path_rdc=path0 / jour / rep / rdc
 		if not path_rdc.exists:
@@ -201,7 +202,10 @@ def jourhmvl2pg(jour,pwd,racine=".."):
 					texte=texte[:-1]
 				print("Contenu de RD_PAS: "+texte)
 				continue
-			lirehmvl(str(fichier),"dirmed",pwd,stations,True)
+			if exportcsv:
+				lirehmvl2csv(str(fichier))
+			else:
+				lirehmvl2pg(str(fichier),"dirmed",pwd,stations,True)
 	path0=Path(racine)
 	if len(jour)!= 10:
 		print("format de date d'entrée: AAAA-MM-JJ")
@@ -209,8 +213,8 @@ def jourhmvl2pg(jour,pwd,racine=".."):
 	if not Path.exists(path0 / jour):
 		print("Le répertoire "+jour+" n'existe pas.")
 		return
-	print("lecture du jour "+jour+"dans postgresql.")
-	# stations est passé en paramètre à lirehmvl pour ne pas être lu n fois
+	# pas besoin de lire les codes de station pour l'export CSV mais on les lit quand même
+	# stations est passé en paramètre à lirehmvl2pg pour ne pas être lu n fois
 	connection = psycopg2.connect(user="dirmed", password=pwd, host="127.0.0.1", \
 		port="5432", database="hmvl")
 	# lecture des codes des stations
