@@ -81,19 +81,25 @@ def lirehmvl2pg(f,u,p,stations,log=False):
 				liste_mesures.append(mesure)
 	# ESSAI de connexion à postgres et écriture en une fois : pour une raison inconnue le execute_values ne rend pas la main??
 	# cf. execute_values
-	postgres_insert_query = "INSERT INTO hmvl (horodate_id,hdt,station,status,voie,vitesse,longueur,statutTR) VALUES %s"
+	postgres_insert_query = "INSERT INTO hmvl (id,horodate_id,hdt,station,status,voie,vitesse,longueur,statutTR) VALUES %s"
 	connection = psycopg2.connect(user=u, password=p, host="127.0.0.1", \
 		port="5432", database="hmvl")
+	index_query = "SELECT MAX(id) from hmvl;"
 	cursor = connection.cursor()
-	psycopg2.extras.execute_values(cursor,postgres_insert_query, liste_mesures,page_size=1000)
+	cursor.execute(index_query)
+	maxid=cursor.fetchall()[0][0]
+	if maxid is None: maxid=0
+	psycopg2.extras.execute_values(cursor,postgres_insert_query, liste_mesures,
+		template="(DEFAULT,%s,%s,%s,%s,%s,%s,%s,%s)",page_size=1000)
 	connection.commit()
 	# log de l'import
 	if log:
-		postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes) VALUES (%s,%s,%s)"
+		postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes,firstid,lastid) VALUES (%s,%s,%s,%s,%s)"
 		nbmes=len(liste_mesures)
 		print(str(datetime.datetime.now())+" Insertion de "+str(nbmes)+" lignes pour "+f)
 		cursor = connection.cursor()
-		cursor.execute(postgres_insert_query,(f,datetime.datetime.now(),nbmes))
+		# on suppose qu'il n'y aura pas eu d'écritures simultanées dans la base!
+		cursor.execute(postgres_insert_query,(f,datetime.datetime.now(),nbmes,maxid+1,maxid+len(liste_mesures)))
 		connection.commit()
 	cursor.close()
 	connection.close()
