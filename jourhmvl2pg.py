@@ -105,12 +105,25 @@ def lirehmvl2pg(f,u,p,stations,log=False):
 	connection.close()
 
 
-def lirelabocom(f,u,p):
+def lirelabocom(jour,rep="labocom",pwd):
 	# lecture d'un fichier de mesures individuelles au format CSV Labocom
+	# cf. le wiki https://github.com/PatGendre/hmvl/wiki/Fichiers-Labocom-(autres-stations)/
 	# f : fichier de mesures CSV
 	# u utilisateurs, p mot de passe
 	# jour,heure : heure de démarrage de la lecture
 	# on déduit jour et heure du nom du chemin du fichier qui doit être AAAA-MM-JJ/HH-MM/labocom
+	racine=Path("..")
+	rep=path(racine/jour/rep)
+	for fichier in list(rep.glob('**/RD*')):
+		x= str.split(fichier.name,'_')
+		if len(x)!=3:
+			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+			continue
+		if x[2]!=".csv":
+			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+			continue
+		# ATTENTION  on suppose que les noms RGS labocom sont en MAJUSCULES???
+		rgs=str.upper(x[1])
 
 	# à revoir ensuite : PAtHLIB
 	liste_mesures=[]
@@ -239,5 +252,6 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		print(datetime.datetime.now().time())
 		lirerdc(jour,str(rep),pwd,"rdc_0",stations)
 		lirerdc(jour,str(rep),pwd,"rdc_1",stations)
+		#lire labocom(jour,str(rep),pwd)
 	print(datetime.datetime.now().time())
 
