@@ -54,7 +54,9 @@ def lirehmvl2pg(f,u,p,stations,log=False):
 			else:
 				indexstn=stations[indexstn]
 			etatstn=ligne[4]
-			n=(len(ligne)-6)//11
+			# il faudrait tester que n(len(ligne)-7)%11=0 càd que les trames comptent bien nx11 caractères
+			# pour les données RD jusqu'à présent on n'a pas rencontré de pb mais on l'a constaté sur labocom
+			n=(len(ligne)-7)//11
 			# pour une ligne sans mesure, on garde traces des trames vides, pour des diagnostics
 			# on sauve aussi le statut du dernier caractère de la ligne (absent si la trame est vide, 5ème caractère à 2)
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
@@ -104,96 +106,111 @@ def lirehmvl2pg(f,u,p,stations,log=False):
 	cursor.close()
 	connection.close()
 
-
-def lirelabocom(jour,rep="labocom",pwd):
+def lirelabocom(jour,rep,pwd,u="dirmed",log=True):
 	# lecture d'un fichier de mesures individuelles au format CSV Labocom
 	# cf. le wiki https://github.com/PatGendre/hmvl/wiki/Fichiers-Labocom-(autres-stations)/
-	# f : fichier de mesures CSV
-	# u utilisateurs, p mot de passe
-	# jour,heure : heure de démarrage de la lecture
 	# on déduit jour et heure du nom du chemin du fichier qui doit être AAAA-MM-JJ/HH-MM/labocom
-	racine=Path("..")
-	rep=path(racine/jour/rep)
-	for fichier in list(rep.glob('**/RD*')):
+	# string AAAA-MM-JJ
+	# rep chemon complet depuis le répertoire courant, ex. "../2020-04-02/labocom"
+	# pwd : mot de passe d'accès à la base hmvl sur postgresql
+	rep=pathlib.Path(rep)
+	if not path_rdc.exists:
+		print(str(path_rdc)+" n'existe pas.")
+		return
+	for fichier in list(rep.glob('**/*')):
 		x= str.split(fichier.name,'_')
 		if len(x)!=3:
 			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
 			continue
-		if x[2]!=".csv":
+		if x[2][-4:]!=".csv":
 			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
 			continue
 		# ATTENTION  on suppose que les noms RGS labocom sont en MAJUSCULES???
 		rgs=str.upper(x[1])
-
-	# à revoir ensuite : PAtHLIB
-	liste_mesures=[]
-	if os.path.exists(f):
-		print(f+" : fichier inexistant.")
-		return
-	jour=str.split(f,'/')[0]
-	heure=str.split(f,'/')[1]
-	datetime.datetime.fromtimestamp()
-	with open(f) as csvfile:
-		reader = csv.DictReader(csvfile,separator=";")
-		for row in reader:
-			if row['REQUETE']!="MI 1":
-				continue
-			dt_texte=jour+" "+heure+":00"
-			dt_unix0=datetime.strptime(dt_texte,"%Y-%m-%d %H-%M-%S")
-			# lecture du fichier, une ligne par trame hmvl
-			indexstn=row['RGS']
-			# le nom de la station peut aussi être déduit du fichier
-			if indexstn!=f[3:6]:
-				print("WARNING station différente de : "+f[3:6])
-			# valeur arbitraire pour ce status qui existe dans les fichiers RD et pas dans les fichiers LABOCOM
-			etatstn=None
-			reponse=row['REPONSE']
-			# pour une ligne sans mesure, on garde traces des trames vides, pour des diagnostics
-			# on sauve aussi le statut du dernier caractère de la ligne (absent si la trame est vide, 5ème caractère à 2)
-			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
-			if reponse[0:2]!="T:":
-				print("WARNING: trame sans T: !!!")
-				continue
-			reponse=reponse[2:]
-			statutTR=reponse[:-1]
-			n=(len(reponse)-6)//11
-			if n==0:
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
-				liste_mesures.append(mesure)
-			for i in range(n):
-				c11=reponse[6+i*11:17+i*11]
-				numvoie=c11[0]
-				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1:3]),microseconds=int(c11[3:5])*10000)
-				vitesse=c11[5:8]
-				if vitesse=='   ' or vitesse=="":
-					vitesse=None
-				else:
-					vitesse=float(vitesse)
-				longueur=c11[8:11]
-				if longueur=='' or longueur=="   ":
-					longueur=None
-				else:
-					longueur=float(longueur)*0.1
-				mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
-				liste_mesures.append(mesure)
-	# ESSAI de connexion à postgres et écriture en une fois : pour une raison inconnue le execute_values ne rend pas la main??
-	# cf. execute_values
-	postgres_insert_query = "INSERT INTO hmvl (horodate_id,hdt,station,status,voie,vitesse,longueur,statutTR) VALUES %s"
-	connection = psycopg2.connect(user=u, password=p, host="127.0.0.1", \
-		port="5432", database="hmvl")
-	cursor = connection.cursor()
-	psycopg2.extras.execute_values(cursor,postgres_insert_query, liste_mesures,page_size=1000)
-	connection.commit()
-	cursor.close()
-	# enregistrement de la lecture effectuée dans la table Log_imports
-	cursor = connection.cursor()
-	postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes) VALUES %s"
-	nmesures=len(liste_mesures)
-	print(str(datetime.datetime.now())," Insertion de "+str(nmesures)+" lignes pour "+f)
-	log_import=(f,datetime.datetime.now(),nmesures)
-	connection.commit()
-	cursor.close()
-	connection.close()
+		jj=str.upper(x[0])
+		liste_mesures=[]
+		with open(fichier) as csvfile:
+			reader = csv.DictReader(csvfile,delimiter=";")
+			for row in reader:
+				if row['REQUETE']!="MI 1":
+					continue
+				dt_texte=jour+" "+row['HORODATE']
+				dt_unix0=datetime.datetime.strptime(dt_texte,"%Y-%m-%d %H:%M:%S")
+				# lecture du fichier, une ligne par trame hmvl
+				indexstn=row['RGS']
+				# le nom de la station peut aussi être déduit du fichier
+				if indexstn!=rgs:
+					print("WARNING station différente de : "+rgs)
+				# valeur arbitraire pour ce status qui existe dans les fichiers RD et pas dans les fichiers LABOCOM
+				etatstn=None
+				reponse=row['REPONSE']
+				# pour une ligne sans mesure, on garde traces des trames vides, pour des diagnostics
+				# on sauve aussi le statut du dernier caractère de la ligne (absent si la trame est vide, 5ème caractère à 2)
+				# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
+				if reponse is None or reponse=="":
+					print("WARNING: trame vide !!!")
+					continue		
+				if reponse[0:2]!="T:":
+					print("WARNING: trame sans T: !!!")
+					continue
+				statutTR=reponse[-1:]
+				n=(len(reponse)-3)//11
+				if ((len(reponse)-3)%11)!=0:
+					print("WARNING : ligne avec un nb de caractères non multiple de 11")
+					continue
+				if n==0:
+					mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
+					liste_mesures.append(mesure)
+				for i in range(n):
+					c11=reponse[2+i*11:13+i*11]
+					numvoie=c11[0]
+					s=c11[1:3]
+					ms=c11[3:5]
+					if s=="" or s=="  " or ms=="" or ms=="  ":
+						dt_unix=None
+					else:
+						dt_unix=dt_unix0+datetime.timedelta(seconds=int(s),microseconds=int(ms)*10000)
+					vitesse=c11[5:8]
+					if vitesse=='   ' or vitesse=="":
+						vitesse=None
+					else:
+						vitesse=float(vitesse)
+					longueur=c11[8:11]
+					if longueur=='' or longueur=="   ":
+						longueur=None
+					else:
+						longueur=float(longueur)*0.1
+					if dt_unix is None:
+						continue
+						# le champ hdt en base est un TIMESTAMPTZ NOT NULL, on n'enregistre la ligne vide
+					else:
+						mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
+						liste_mesures.append(mesure)
+		postgres_insert_query = "INSERT INTO hmvl (id,horodate_id,hdt,station,status,voie,vitesse,longueur,statutTR) VALUES %s"
+		connection = psycopg2.connect(user=u, password=pwd, host="127.0.0.1", \
+			port="5432", database="hmvl")
+		cursor = connection.cursor()
+		index_query = "SELECT MAX(id) from hmvl;"
+		cursor = connection.cursor()
+		cursor.execute(index_query)
+		maxid=cursor.fetchall()[0][0]
+		if maxid is None: maxid=0
+		psycopg2.extras.execute_values(cursor,postgres_insert_query, liste_mesures,
+			template="(DEFAULT,%s,%s,%s,%s,%s,%s,%s,%s)",page_size=1000)
+		connection.commit()
+		cursor.close()
+		# enregistrement de la lecture effectuée dans la table Log_imports
+	# log de l'import
+		if log:
+			postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes,firstid,lastid) VALUES (%s,%s,%s,%s,%s)"
+			nbmes=len(liste_mesures)
+			print(str(datetime.datetime.now())," Insertion de "+str(nbmes)+" lignes pour "+str(fichier.name))
+			cursor = connection.cursor()
+			# on suppose qu'il n'y aura pas eu d'écritures simultanées dans la base!
+			cursor.execute(postgres_insert_query,(str(fichier),datetime.datetime.now(),nbmes,maxid+1,maxid+nbmes))
+			connection.commit()
+		cursor.close()
+		connection.close()
 
 from pathlib import Path
 def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
@@ -252,6 +269,7 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		print(datetime.datetime.now().time())
 		lirerdc(jour,str(rep),pwd,"rdc_0",stations)
 		lirerdc(jour,str(rep),pwd,"rdc_1",stations)
-		#lire labocom(jour,str(rep),pwd)
+		# à tester !!
+		lirelabocom(jour,str(rep),pwd)
 	print(datetime.datetime.now().time())
 
