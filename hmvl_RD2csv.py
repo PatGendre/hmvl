@@ -10,7 +10,7 @@ import csv
 
 #@click.command()
 #@click.option("--f", default="RD297_200", help="Nom du fichier hmvl VRU RDxxx.")
-def lirehmvl2csv(f):
+def hmvl2csv(f):
 	# seul paramètre : le nom du fichier
 	# il faudrait ajouter un paramètre pour le répertoire d'écriture
 	with open(f,'r') as ff:
@@ -58,4 +58,3 @@ def lirehmvl2csv(f):
 		for mesure in liste_mesures:
 			fwriter.writerow(mesure)
 	print(datetime.datetime.now()+" Export CSV de "+str(len(liste_mesures))+" mesures.")
-

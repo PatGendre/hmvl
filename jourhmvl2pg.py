@@ -17,7 +17,7 @@ import psycopg2.extras
 #@click.command()
 #@click.option("--jour", default="2020-04-02", help="Jour à importer dans postgresql AAAA-MM-JJ.")
 #@click.option("--p",help="mot de passe")
-def lirehmvl2pg(f,u,p,stations,log=False):
+def hmvl2pg(f,u,p,stations,log=False):
 	with open(f,'r') as ff:
 		# header du fichier RD: horodate en clair et en temps unix
 		# u, p : user password d'accès à la BD postgres hmvl
@@ -106,7 +106,7 @@ def lirehmvl2pg(f,u,p,stations,log=False):
 	cursor.close()
 	connection.close()
 
-def lirelabocom(jour,rep,pwd,u="dirmed",log=True):
+def labocom2pg(jour,rep,pwd,u="dirmed",log=True):
 	# lecture d'un fichier de mesures individuelles au format CSV Labocom
 	# cf. le wiki https://github.com/PatGendre/hmvl/wiki/Fichiers-Labocom-(autres-stations)/
 	# on déduit jour et heure du nom du chemin du fichier qui doit être AAAA-MM-JJ/HH-MM/labocom
@@ -114,16 +114,17 @@ def lirelabocom(jour,rep,pwd,u="dirmed",log=True):
 	# rep chemon complet depuis le répertoire courant, ex. "../2020-04-02/labocom"
 	# pwd : mot de passe d'accès à la base hmvl sur postgresql
 	rep=pathlib.Path(rep)
-	if not path_rdc.exists:
-		print(str(path_rdc)+" n'existe pas.")
+	if not rep.is_dir():
+		print(str(rep)+" n'existe pas.")
 		return
+	print(str(rep))
 	for fichier in list(rep.glob('**/*')):
 		x= str.split(fichier.name,'_')
 		if len(x)!=3:
-			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+			#print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
 			continue
 		if x[2][-4:]!=".csv":
-			print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+			#print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
 			continue
 		# ATTENTION  on suppose que les noms RGS labocom sont en MAJUSCULES???
 		rgs=str.upper(x[1])
@@ -221,7 +222,7 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		# pwd mot de passe de la base hmvl postgresql
 		# rdc : "rdc_0" ou "rdc_1" pour les 2 frontaux de recueil de données VRU
 		# racine : chemin initial pour aboutir au répertoire jour depuis l'exécution du code
-		# exportcsv=True appelle lirehmvl2csv au lieu de lirehmvl2pg
+		# exportcsv=True appelle lirehmvl2csv au lieu de hmvl2pg
 		path0=Path(racine)
 		path_rdc=path0 / jour / rep / rdc
 		if not path_rdc.exists:
@@ -231,17 +232,16 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		print("nombre de fichiers trouvés dans "+rdc+": "+str(len(list(path_rdc.glob('**/*')))))
 		# on ne teste pas s'il y a des fichiers qui ne commencent pas par RD
 		for fichier in list(path_rdc.glob('**/RD*')):
-			if str(fichier)[-6:]=="RD_PAS":
-				f=open(fichier,"r")
-				texte=f.readline()
-				if len(texte)>0:
-					texte=texte[:-1]
-				print("Contenu de RD_PAS: "+texte)
+			nomfichier=fichier.name
+			if len(nomfichier)!=9:
+				print("Fichier "+nomfichier+ " ignoré")
 				continue
+			if nomfichier[-3:]==".dd" or nomfichier[-4:]==".dup":
+				print(nomfichier+": doublon")
 			if exportcsv:
-				lirehmvl2csv(str(fichier))
+				hmvl2csv(str(fichier))
 			else:
-				lirehmvl2pg(str(fichier),"dirmed",pwd,stations,True)
+				hmvl2pg(str(fichier),"dirmed",pwd,stations,True)
 	path0=Path(racine)
 	if len(jour)!= 10:
 		print("format de date d'entrée: AAAA-MM-JJ")
@@ -250,7 +250,7 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		print("Le répertoire "+jour+" n'existe pas.")
 		return
 	# pas besoin de lire les codes de station pour l'export CSV mais on les lit quand même
-	# stations est passé en paramètre à lirehmvl2pg pour ne pas être lu n fois
+	# stations est passé en paramètre à hmvl2pg pour ne pas être lu n fois
 	connection = psycopg2.connect(user="dirmed", password=pwd, host="127.0.0.1", \
 		port="5432", database="hmvl")
 	# lecture des codes des stations
@@ -269,7 +269,6 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		print(datetime.datetime.now().time())
 		lirerdc(jour,str(rep),pwd,"rdc_0",stations)
 		lirerdc(jour,str(rep),pwd,"rdc_1",stations)
-		# à tester !!
-		lirelabocom(jour,str(rep),pwd)
+		labocom2pg(jour,str(rep),pwd)
 	print(datetime.datetime.now().time())
 
