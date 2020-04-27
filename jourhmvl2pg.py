@@ -7,16 +7,17 @@
 import click
 import pathlib
 import datetime
+import arrow
 import csv
 import psycopg2
 import psycopg2.extras
 # cf. tentative d'optimisation https://www.psycopg.org/docs/extras.html#fast-execution-helpers
-##import hmvlRD2pg
+# import hmvlRD2pg
 
-# on verra ensuite comment gérer proprement les imports / les package 
-#@click.command()
-#@click.option("--jour", default="2020-04-02", help="Jour à importer dans postgresql AAAA-MM-JJ.")
-#@click.option("--p",help="mot de passe")
+# pour utiliser : copier coller le code dans une console python OU
+# ligne de commande pour la fonction jourhmvl2pg
+# on verra ensuite comment gérer proprement l'import de code/ les package 
+
 def hmvl2pg(f,u,p,stations,log=False):
 	with open(f,'r') as ff:
 		# header du fichier RD: horodate en clair et en temps unix
@@ -29,7 +30,7 @@ def hmvl2pg(f,u,p,stations,log=False):
 			return
 		else:
 			dt_texte=dt_texte[:-1]
-		dt_unix0=datetime.datetime.fromtimestamp(float(ff.readline()[0:10]))
+		dt_unix0=arrow.get(ff.readline()[0:10]).datetime
 		liste_mesures=[]
 		# stations peut être passé en paramètre pour ne pas être lu n fois
 		if stations is None:
@@ -98,7 +99,7 @@ def hmvl2pg(f,u,p,stations,log=False):
 	if log:
 		postgres_insert_query = "INSERT INTO log_imports (fichier,horodate,nbmes,firstid,lastid) VALUES (%s,%s,%s,%s,%s)"
 		nbmes=len(liste_mesures)
-		print(str(datetime.datetime.now())+" Insertion de "+str(nbmes)+" lignes pour "+f)
+		print(str(arrow.utcnow())+" Insertion de "+str(nbmes)+" lignes pour "+f)
 		cursor = connection.cursor()
 		# on suppose qu'il n'y aura pas eu d'écritures simultanées dans la base!
 		cursor.execute(postgres_insert_query,(f,datetime.datetime.now(),nbmes,maxid+1,maxid+len(liste_mesures)))
@@ -135,8 +136,13 @@ def labocom2pg(jour,rep,pwd,u="dirmed",log=True):
 			for row in reader:
 				if row['REQUETE']!="MI 1":
 					continue
-				dt_texte=jour+" "+row['HORODATE']
-				dt_unix0=datetime.datetime.strptime(dt_texte,"%Y-%m-%d %H:%M:%S")
+				dta,dtm,dtj=str.split(jour,'-')
+				# attention l'heure dans les csv labocom est en heure locale pas en UTC comme le timestamp des fichiers RD
+				dth,dtmi,dts=str.split(row['HORODATE'],':')
+				dt=datetime.datetime(int(dta),int(dtm),int(dtj),int(dth),int(dtmi),int(dts))
+				#dt_unix0=datetime.datetime.strptime(dt_texte,"%Y-%m-%d %H:%M:%S")
+				dt_unix0=arrow.Arrow.fromdatetime(dt,"Europe/Paris")
+				dt_texte=dt_unix0.format(fmt='YYYY-MM-DD HH:mm:ssZZ', locale='fr')
 				# lecture du fichier, une ligne par trame hmvl
 				indexstn=row['RGS']
 				# le nom de la station peut aussi être déduit du fichier
@@ -214,6 +220,11 @@ def labocom2pg(jour,rep,pwd,u="dirmed",log=True):
 		connection.close()
 
 from pathlib import Path
+@click.command()
+@click.option('--jour', prompt='jour:', help='string HHHH-MM-AA')
+@click.option('--pwd', prompt='Mot de passe BD:', help='Password base hmvl')
+@click.option('--racine', prompt='Répertoire', default="..", help='Exemple . , .. , "../MM-AA" etc.')
+@click.option('--exportcsv', default=False, help="True si on export des fichiers csv au lieu d'importer en base")
 def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 	# code factorisé pour rdc_0 et rdc_1 : rdc est 'rdc_0' ou 'rdc_1'
 	def lirerdc(jour,rep,pwd,rdc,stations,racine="..",exportcsv=False):
@@ -233,11 +244,14 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		# on ne teste pas s'il y a des fichiers qui ne commencent pas par RD
 		for fichier in list(path_rdc.glob('**/RD*')):
 			nomfichier=fichier.name
+			# le nom de fichier est en principe RDxxx_100 ou 200
 			if len(nomfichier)!=9:
 				print("Fichier "+nomfichier+ " ignoré")
 				continue
-			if nomfichier[-3:]==".dd" or nomfichier[-4:]==".dup":
-				print(nomfichier+": doublon")
+			# pas d'extension
+			if "." in nomfichier or nomfichier[:2]!="RD" or not(nomfichier[-4:] in ["_100","_200"]):
+				print(nomfichier+": doublon ou mauvais type de fichier")
+				continue
 			if exportcsv:
 				hmvl2csv(str(fichier))
 			else:
@@ -272,3 +286,5 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		labocom2pg(jour,str(rep),pwd)
 	print(datetime.datetime.now().time())
 
+if __name__ == '__main__':
+	jourhmvl2pg()
