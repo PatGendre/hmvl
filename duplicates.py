@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 """
 Fast duplicate file finder.
-Usage: duplicates.py <folder> [<folder>...]
-
+Usage: duplicates.py <folder> [<folder>...]python duplicates.py ../rdc_0/2020-04-25 ../rdc_1/2020-04-25
 Based on https://stackoverflow.com/a/36113168/300783
 Modified for Python3 with some small code improvements.
 adapté aux fichiers hmvl DIRMED 24/04/2020
 
 exemple:
-duplicates.py ../2020-04-02 pour une journée de 10-00 à 18-00
+python duplicates.py ../rdc_0/2020-04-25 ../rdc_1/2020-04-25
 donne comme résultat 
-find  ../2020-04-02 -name "*00" -type f|wc -l
+   (find  ../rdc_*/2020-04-02 -name "*00" -type f|wc -l)
 8000 fichiers RD (se terminent pas 00), 112 fichiers csv (Labocom), 19000 fichiers en doublons
 """
 import os

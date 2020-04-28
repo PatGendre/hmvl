@@ -55,17 +55,24 @@ def hmvl2pg(f,u,p,stations,log=False):
 			else:
 				indexstn=stations[indexstn]
 			etatstn=ligne[4]
-			# il faudrait tester que n(len(ligne)-7)%11=0 càd que les trames comptent bien nx11 caractères
-			# pour les données RD jusqu'à présent on n'a pas rencontré de pb mais on l'a constaté sur labocom
-			n=(len(ligne)-7)//11
+			n=(len(ligne)-8)//11
 			# pour une ligne sans mesure, on garde traces des trames vides, pour des diagnostics
 			# on sauve aussi le statut du dernier caractère de la ligne (absent si la trame est vide, 5ème caractère à 2)
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			statutTR=ligne[-2:-1]
 			if etatstn=="2": statutTR=None
-			if n==0:
+			if n<=0:
 				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
+				continue
+			# on suppose que le * est à supprimer (reprise de connexion https://github.com/PatGendre/hmvl/issues/16)
+			ligne=ligne.replace('*','')
+			# tester que n(len(ligne)-7)%11=0 càd que les trames comptent bien nx11 caractères
+			if ((len(ligne)-8)%11)!=0:
+				print("ERREUR TRAME pas multiple de 11 caractères")
+				print(ligne)
+				continue
+			# lecture des trames "normales"
 			for i in range(n):
 				c11=ligne[6+i*11:17+i*11]
 				numvoie=c11[0]
@@ -73,6 +80,7 @@ def hmvl2pg(f,u,p,stations,log=False):
 				vitesse=c11[5:8]
 				if vitesse=='   ' or vitesse=="":
 					vitesse=None
+					continue
 				else:
 					vitesse=float(vitesse)
 				longueur=c11[8:11]
@@ -107,14 +115,17 @@ def hmvl2pg(f,u,p,stations,log=False):
 	cursor.close()
 	connection.close()
 
-def labocom2pg(jour,rep,pwd,u="dirmed",log=True):
-	# lecture d'un fichier de mesures individuelles au format CSV Labocom
+def labocom2pg(jour,racine,pwd,u="dirmed",log=True):
+	# lecture des fichiers de mesures individuelles au format CSV Labocom pour un jour donné
 	# cf. le wiki https://github.com/PatGendre/hmvl/wiki/Fichiers-Labocom-(autres-stations)/
-	# on déduit jour et heure du nom du chemin du fichier qui doit être AAAA-MM-JJ/HH-MM/labocom
-	# string AAAA-MM-JJ
-	# rep chemon complet depuis le répertoire courant, ex. "../2020-04-02/labocom"
+	# avec des fichiers dans un sous-répertoire AAAA-MM-JJ situé dans racine/Labocom
 	# pwd : mot de passe d'accès à la base hmvl sur postgresql
-	rep=pathlib.Path(rep)
+	# actuellement il y a 8 stations labocom à la DIRMED, et un fichier par jour et par station
+	racine=pathlib.Path(racine)
+	if not racine.is_dir():
+		print(str(racine)+" n'existe pas.")
+		return
+	rep = racine / "Labocom" / jour
 	if not rep.is_dir():
 		print(str(rep)+" n'existe pas.")
 		return
@@ -161,13 +172,17 @@ def labocom2pg(jour,rep,pwd,u="dirmed",log=True):
 					print("WARNING: trame sans T: !!!")
 					continue
 				statutTR=reponse[-1:]
-				n=(len(reponse)-3)//11
+				# on suppose que le * est à supprimer (reprise de connexion https://github.com/PatGendre/hmvl/issues/16)
+				reponse=reponse.replace('*','')
 				if ((len(reponse)-3)%11)!=0:
-					print("WARNING : ligne avec un nb de caractères non multiple de 11")
+					print("ERREUR : ligne avec un nb de caractères non multiple de 11")
+					print(reponse)
 					continue
-				if n==0:
+				n=(len(reponse)-3)//11
+				if n<=0:
 					mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 					liste_mesures.append(mesure)
+					continue
 				for i in range(n):
 					c11=reponse[2+i*11:13+i*11]
 					numvoie=c11[0]
@@ -235,12 +250,12 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 		# racine : chemin initial pour aboutir au répertoire jour depuis l'exécution du code
 		# exportcsv=True appelle lirehmvl2csv au lieu de hmvl2pg
 		path0=Path(racine)
-		path_rdc=path0 / jour / rep / rdc
+		path_rdc=path0 / rdc / jour / rep
 		if not path_rdc.exists:
 			print(str(path_rdc)+" n'existe pas.")
 			return
 		print ("répertoire "+rep)
-		print("nombre de fichiers trouvés dans "+rdc+": "+str(len(list(path_rdc.glob('**/*')))))
+		print("nombre de fichiers trouvés: "+str(len(list(path_rdc.glob('**/RD*')))))
 		# on ne teste pas s'il y a des fichiers qui ne commencent pas par RD
 		for fichier in list(path_rdc.glob('**/RD*')):
 			nomfichier=fichier.name
@@ -260,8 +275,8 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 	if len(jour)!= 10:
 		print("format de date d'entrée: AAAA-MM-JJ")
 		return
-	if not Path.exists(path0 / jour):
-		print("Le répertoire "+jour+" n'existe pas.")
+	if not Path.exists(path0 / "rdc_0" / jour):
+		print("Le répertoire rdc_0/"+jour+" n'existe pas.")
 		return
 	# pas besoin de lire les codes de station pour l'export CSV mais on les lit quand même
 	# stations est passé en paramètre à hmvl2pg pour ne pas être lu n fois
@@ -279,11 +294,13 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 	connection.close()
 	# boucle sur les répertoires du jour 'HH-MM'
 	# TODO lire aussi les fichiers Labocom
-	for rep in list((path0 / jour).glob('*')):
+	for rep in list((path0 / "rdc_0" / jour).glob('*')):
 		print(datetime.datetime.now().time())
-		lirerdc(jour,str(rep),pwd,"rdc_0",stations)
-		lirerdc(jour,str(rep),pwd,"rdc_1",stations)
-		labocom2pg(jour,str(rep),pwd)
+		lirerdc(jour,rep.name,pwd,"rdc_0",stations)
+	for rep in list((path0 / "rdc_1" / jour).glob('*')):
+		print(datetime.datetime.now().time())
+		lirerdc(jour,rep.name,pwd,"rdc_1",stations)
+	labocom2pg(jour,racine,pwd)
 	print(datetime.datetime.now().time())
 
 if __name__ == '__main__':
