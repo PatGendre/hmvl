@@ -267,8 +267,9 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 			if "." in nomfichier or nomfichier[:2]!="RD" or not(nomfichier[-4:] in ["_100","_200"]):
 				print(nomfichier+": doublon ou mauvais type de fichier")
 				continue
+			# temporaire : nom "en dur" jour+".csv" pour le test d'export csv d'un jour
 			if exportcsv:
-				hmvl2csv(str(fichier))
+				hmvl2csv(str(fichier),jour+".csv",a_or_w='a')
 			else:
 				hmvl2pg(str(fichier),"dirmed",pwd,stations,True)
 	path0=Path(racine)
@@ -294,13 +295,21 @@ def jourhmvl2pg(jour,pwd,racine="..",exportcsv=False):
 	connection.close()
 	# boucle sur les répertoires du jour 'HH-MM'
 	# TODO lire aussi les fichiers Labocom
+	if exportcsv:
+		header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+		with open(jour+".csv","w") as fcsv:
+			fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
+			fwriter.writerow(header)
 	for rep in list((path0 / "rdc_0" / jour).glob('*')):
 		print(datetime.datetime.now().time())
-		lirerdc(jour,rep.name,pwd,"rdc_0",stations)
+		lirerdc(jour,rep.name,pwd,"rdc_0",stations,racine,exportcsv)
 	for rep in list((path0 / "rdc_1" / jour).glob('*')):
 		print(datetime.datetime.now().time())
-		lirerdc(jour,rep.name,pwd,"rdc_1",stations)
-	labocom2pg(jour,racine,pwd)
+		lirerdc(jour,rep.name,pwd,"rdc_1",stations,racine,exportcsv)
+	if exportcsv:
+		labocom2csv(jour,jour+".csv",racine="..",a_or_w='a')
+	else:
+		labocom2pg(jour,racine,pwd)
 	print(datetime.datetime.now().time())
 
 if __name__ == '__main__':
