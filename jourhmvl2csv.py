@@ -52,20 +52,30 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 			# on suppose que le * est à supprimer (reprise de connexion https://github.com/PatGendre/hmvl/issues/16)
 			reponse=ligne[6:-1]
 			reponse=reponse.replace('*','')
-			n=len(reponse)//11
+			# la trame moins le dernier caractère de status doit avoir nx11 caractères
+			n=(len(reponse)-1)//11
 			# pour une ligne sans mesure, on garde traces des trames vides, pour des diagnostics
 			# on sauve aussi le statut du dernier caractère de la ligne (absent si la trame est vide, 5ème caractère à 2)
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			statutTR=ligne[-2:-1]
 			if etatstn=="2": statutTR=None
-			if n==0:
+			if n<=0:
 				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
+				continue
 			if not all((c in chars) for c in reponse):
 				# chaine avec des caractères interdits:
 				print ("CARACTERES INTERDITS DANS LA TRAME "+reponse)
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
+				liste_mesures.append(mesure)
 				continue
-				# on passe au suivant
+			if ((len(reponse)-1)%11)!=0:
+				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
+				print(reponse+" "+str(len(reponse))+" "+str("\n" in reponse)+" "+str("\n" in ligne))
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
+				liste_mesures.append(mesure)
+				continue
+			# on passe au suivant
 			reponse=reponse.replace('*','')
 			for i in range(n):
 				c11=reponse[i*11:17+i*11]
@@ -148,9 +158,13 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			if reponse is None or reponse=="":
 				print("WARNING: trame vide !!!")
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"1")
+				liste_mesures.append(mesure)
 				continue		
 			if reponse[0:2]!="T:":
 				print("WARNING: trame sans T: !!!")
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"2")
+				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
 				# chaine avec des caractères interdits:
@@ -158,6 +172,8 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 				for c in reponse:
 					if not(c in chars):
 						print(c)				
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
+				liste_mesures.append(mesure)
 				continue
 				# on passe au suivant
 
@@ -167,6 +183,8 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			if ((len(reponse)-3)%11)!=0:
 				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
 				print(reponse)
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
+				liste_mesures.append(mesure)
 				continue
 			n=(len(reponse)-3)//11
 			if n<=0:

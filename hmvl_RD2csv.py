@@ -3,6 +3,9 @@
 """hmvl-RD2csv.py: conversion de fichiers hmvl VRU Marius6 secondes en csv, cf. github.com/patgendre/hmvl """
 
 # patrick gendre 24/03/20
+
+# en principe fonctionne encore mais OBSOLETE :
+# utiliser plutôt jourhmvl2csv.py puis importer en base par un COPY
 # 
 #import click
 import datetime

@@ -3,6 +3,9 @@
 """jourhmvl2pg.py: lecture de fichiers du répertoire d'un jour hmvl VRU Marius6 secondes et écriture dans une BD pg, cf. github.com/patgendre/hmvl """
 
 # patrick gendre 07/04/20
+
+# en principe fonctionne encore mais OBSOLETE :
+# utiliser plutôt jourhmvl2csv.py puis importer en base par un COPY
 # 
 import click
 import pathlib
