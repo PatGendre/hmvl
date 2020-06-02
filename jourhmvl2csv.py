@@ -62,7 +62,8 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 			if n<=0:
 				# on n'enregistre pas dt_texte car redondant
 				# pour une trame vide on ajoute un nouveau etatstn : 1
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"1",None,None,None,statutTR)
+				if etatstn=="0": etatstn="1"
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
@@ -160,12 +161,12 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			if reponse is None or reponse=="":
 				print("WARNING: trame vide !!!")
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"1",etatstn,None,None,None,None)
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"1",None,None,None,None)
 				liste_mesures.append(mesure)
 				continue		
 			if reponse[0:2]!="T:":
 				print("WARNING: trame sans T: !!!")
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"4",etatstn,None,None,None,None)
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"5",None,None,None,None)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
@@ -174,7 +175,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 				for c in reponse:
 					if not(c in chars):
 						print(c)				
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"3",etatstn,None,None,None,None)
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"3",None,None,None,None)
 				liste_mesures.append(mesure)
 				continue
 				# on passe au suivant
