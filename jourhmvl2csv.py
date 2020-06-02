@@ -96,7 +96,7 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 				mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 				liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+		header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		if a_or_w=='w':
 			fwriter.writerow(header)
@@ -219,7 +219,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 					mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 					liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+		header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		# on n'ajoute pas l'en-tête si on en est mode append "a"
 		if a_or_w=='w':
@@ -330,7 +330,7 @@ def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
 				fw=csv.writer(flog,delimiter=',', quotechar='"')
 				fw.writerow(("fichier","horodate_exportcsv","nb_mesures"))
 	# boucle sur les répertoires du jour 'HH-MM'
-	header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+	header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
 	with open(nomcsv,"w") as fcsv:
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		fwriter.writerow(header)
