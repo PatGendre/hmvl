@@ -4,7 +4,7 @@
 
 # patrick gendre 24/03/20
 
-# en principe fonctionne encore mais OBSOLETE :
+# en principe fonctionne encore mais OBSOLETE ET PLUS MIS A JOUR:
 # utiliser plutôt jourhmvl2csv.py puis importer en base par un COPY
 # 
 #import click

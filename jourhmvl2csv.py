@@ -60,19 +60,21 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 			statutTR=ligne[-2:-1]
 			if etatstn=="2": statutTR=None
 			if n<=0:
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
+				# on n'enregistre pas dt_texte car redondant
+				# pour une trame vide on ajoute un nouveau etatstn : 1
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"1",None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
 				# chaine avec des caractères interdits:
 				print ("CARACTERES INTERDITS DANS LA TRAME "+reponse)
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"3",None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			if ((len(reponse)-1)%11)!=0:
 				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
 				print(reponse+" "+str(len(reponse))+" "+str("\n" in reponse)+" "+str("\n" in ligne))
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"4",None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			# on passe au suivant
@@ -91,10 +93,10 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 					longueur=None
 				else:
 					longueur=round(float(int(longueur))*0.1,1)
-				mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
+				mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 				liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+		header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		if a_or_w=='w':
 			fwriter.writerow(header)
@@ -158,12 +160,12 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			if reponse is None or reponse=="":
 				print("WARNING: trame vide !!!")
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"1")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"1",etatstn,None,None,None,None)
 				liste_mesures.append(mesure)
 				continue		
 			if reponse[0:2]!="T:":
 				print("WARNING: trame sans T: !!!")
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"2")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"4",etatstn,None,None,None,None)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
@@ -172,7 +174,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 				for c in reponse:
 					if not(c in chars):
 						print(c)				
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),"3",etatstn,None,None,None,None)
 				liste_mesures.append(mesure)
 				continue
 				# on passe au suivant
@@ -183,12 +185,12 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			if ((len(reponse)-3)%11)!=0:
 				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
 				print(reponse)
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"4",None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			n=(len(reponse)-3)//11
 			if n<=0:
-				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			for i in range(n):
@@ -214,10 +216,10 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 					continue
 					# le champ hdt en base est un TIMESTAMPTZ NOT NULL, on n'enregistre la ligne vide
 				else:
-					mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
+					mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 					liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+		header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		# on n'ajoute pas l'en-tête si on en est mode append "a"
 		if a_or_w=='w':
@@ -328,7 +330,7 @@ def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
 				fw=csv.writer(flog,delimiter=',', quotechar='"')
 				fw.writerow(("fichier","horodate_exportcsv","nb_mesures"))
 	# boucle sur les répertoires du jour 'HH-MM'
-	header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
+	header=["dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 	with open(nomcsv,"w") as fcsv:
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		fwriter.writerow(header)
