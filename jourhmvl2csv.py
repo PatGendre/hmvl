@@ -1,15 +1,36 @@
-#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Created on 24/4/20
 
-"""jourhmvl2csv.py: lecture de fichiers du répertoire d'un jour hmvl VRU Marius6 secondes et écriture dans une BD pg, cf. github.com/patgendre/hmvl """
+@author: patrick gendre + guillaume rognon
+"""
+import os
+os.chdir("C:\RD-Backup\CSV")
 
-# patrick gendre 14/05/20
-# 
+chemin = str("C:\RD-Backup\Scripts_Python\Sortie_Script__jourhmvl2csv_old")
+
 import datetime
 import csv
 import click
 import pathlib
 import arrow
 import psycopg2
+
+now = datetime.datetime.now() # current date and time
+dt = now.strftime("%d-%m-%Y_%H-%M")
+date_jour= now.strftime("%Y-%m-%d")
+
+jour = str(date_jour)
+nomcsv = str(jour+ ".csv")
+nomlog = str('LogTest')
+pwd = str('dirmed')
+racine = str("C:/RD-Backup")
+
+
+rapport_traitement = open(chemin + "\\rapport_traitement_"+str(dt)+".txt", "w")
+test= open(chemin + "\\testjhmvl.txt", "w")
+test.write("strjourhmvl2csv exécuté mais erreur avant la fin")
+test.close()
 
 # pour utiliser : copier coller le code dans une console python OU
 # ligne de commande pour la fonction jourhmvl2pg
@@ -60,22 +81,22 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 			statutTR=ligne[-2:-1]
 			if etatstn=="2": statutTR=None
 			if n<=0:
-				# on n'enregistre pas dt_texte car redondant
-				# pour une trame vide on ajoute un nouveau etatstn : 1
-				if etatstn=="0": etatstn="1"
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
 				# chaine avec des caractères interdits:
 				print ("CARACTERES INTERDITS DANS LA TRAME "+reponse)
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"3",None,None,None,statutTR)
+				rapport_traitement.write("CARACTERES INTERDITS DANS LA TRAME "+reponse+" \r\n")
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
 				liste_mesures.append(mesure)
 				continue
 			if ((len(reponse)-1)%11)!=0:
 				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
+				rapport_traitement.write("ERREUR : ligne avec un nb de caractères non multiple de 11"+" \r\n") 
 				print(reponse+" "+str(len(reponse))+" "+str("\n" in reponse)+" "+str("\n" in ligne))
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"4",None,None,None,statutTR)
+				rapport_traitement.write(reponse+" "+str(len(reponse))+" "+str("\n" in reponse)+" "+str("\n" in ligne)+" \r\n") 
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
 				liste_mesures.append(mesure)
 				continue
 			# on passe au suivant
@@ -94,10 +115,10 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 					longueur=None
 				else:
 					longueur=round(float(int(longueur))*0.1,1)
-				mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
+				mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 				liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
+		header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		if a_or_w=='w':
 			fwriter.writerow(header)
@@ -109,6 +130,7 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 				fw=csv.writer(flog,delimiter=',', quotechar='"')
 				fw.writerow((f,datetime.datetime.now(),len(liste_mesures)))
 	print(f+" Export CSV de "+str(len(liste_mesures))+" mesures.")
+	rapport_traitement.write(f+" Export CSV de "+str(len(liste_mesures))+" mesures."+" \r\n") 
 
 def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 	if nomcsv is None: nomcsv=f+".csv"
@@ -127,9 +149,11 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 	x= str.split(fichier.name,'_')
 	if len(x)!=3:
 		print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+		rapport_traitement.write(fichier.name + " n'a pas un nom attendu, on ne le lit pas."+" \r\n") 
 		return
 	if x[2][-4:]!=".csv":
 		print (fichier.name + " n'a pas un nom attendu, on ne le lit pas.")
+		rapport_traitement.write(fichier.name + " n'a pas un nom attendu, on ne le lit pas."+" \r\n") 
 		return
 	# ATTENTION  on suppose que les noms RGS labocom sont en MAJUSCULES???
 	rgs=str.upper(x[1])
@@ -153,6 +177,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			# le nom de la station peut aussi être déduit du fichier
 			if indexstn!=rgs:
 				print("WARNING station différente de : "+rgs)
+				rapport_traitement.write("WARNING station différente de : "+rgs+" \r\n") 
 			# valeur arbitraire pour ce status qui existe dans les fichiers RD et pas dans les fichiers LABOCOM
 			etatstn=None
 			reponse=row['REPONSE']
@@ -161,21 +186,24 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			# le dernier caractère étant \n, c'est en fait l'avant dernier qu'il faut lire
 			if reponse is None or reponse=="":
 				print("WARNING: trame vide !!!")
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"1",None,None,None,None)
+				rapport_traitement.write("WARNING: trame vide !!!"+" \r\n") 
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"1")
 				liste_mesures.append(mesure)
 				continue		
 			if reponse[0:2]!="T:":
 				print("WARNING: trame sans T: !!!")
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"5",None,None,None,None)
+				rapport_traitement.write("WARNING: trame sans T: !!!"+" \r\n") 
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"2")
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):
 				# chaine avec des caractères interdits:
 				print ("CARACTERES INTERDITS DANS LA TRAME "+reponse)
+				rapport_traitement.write("CARACTERES INTERDITS DANS LA TRAME "+reponse+" \r\n")
 				for c in reponse:
 					if not(c in chars):
 						print(c)				
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"3",None,None,None,None)
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"3")
 				liste_mesures.append(mesure)
 				continue
 				# on passe au suivant
@@ -185,13 +213,15 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 			reponse=reponse.replace('*','')
 			if ((len(reponse)-3)%11)!=0:
 				print("ERREUR : ligne avec un nb de caractères non multiple de 11")
+				rapport_traitement.write("ERREUR : ligne avec un nb de caractères non multiple de 11"+" \r\n")
 				print(reponse)
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"4",None,None,None,statutTR)
+				rapport_traitement.write(reponse+" \r\n")
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,"4")
 				liste_mesures.append(mesure)
 				continue
 			n=(len(reponse)-3)//11
 			if n<=0:
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
+				mesure = (dt_texte,dt_unix0.isoformat(),indexstn,etatstn,None,None,None,statutTR)
 				liste_mesures.append(mesure)
 				continue
 			for i in range(n):
@@ -217,10 +247,10 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 					continue
 					# le champ hdt en base est un TIMESTAMPTZ NOT NULL, on n'enregistre la ligne vide
 				else:
-					mesure = (dt_unix0.isoformat(),dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
+					mesure = (dt_texte,dt_unix.isoformat(),indexstn,etatstn,numvoie,vitesse,longueur,statutTR)
 					liste_mesures.append(mesure)
 	with open(nomcsv,a_or_w) as fcsv:
-		header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
+		header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		# on n'ajoute pas l'en-tête si on en est mode append "a"
 		if a_or_w=='w':
@@ -233,6 +263,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 				fw=csv.writer(flog,delimiter=',', quotechar='"')
 				fw.writerow((f,datetime.datetime.now(),len(liste_mesures)))
 	print(f+" Export CSV de "+str(len(liste_mesures))+" mesures.")
+	rapport_traitement.write(f+" Export CSV de "+str(len(liste_mesures))+" mesures."+" \r\n")
 
 def replabocom2csv(jour,rep,nomcsv,nomlog):
 	if nomcsv is None: nomcsv=f+".csv"
@@ -248,10 +279,14 @@ def replabocom2csv(jour,rep,nomcsv,nomlog):
 	chemin=pathlib.Path(rep)
 	if not chemin.is_dir():
 		print(rep+" n'existe pas.")
+		rapport_traitement.write(rep+" n'existe pas."+" \r\n")
 		return
 	print ("répertoire "+rep)
 	print("nombre de fichiers trouvés: "+str(len(list(chemin.glob('**/*')))))
 	print(datetime.datetime.now().time())
+	rapport_traitement.write("répertoire "+rep+" \r\n")
+	rapport_traitement.write("nombre de fichiers trouvés: "+str(len(list(chemin.glob('**/*'))))+" \r\n")
+	rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 	for fichier in list(chemin.glob('**/*')):
 		labocom2csv(jour,str(fichier),nomcsv,nomlog=nomlog,a_or_w='a')
 
@@ -274,19 +309,24 @@ def rephmvl2csv(rep,nomcsv,nomlog,stations):
 	print ("répertoire "+rep)
 	print("nombre de fichiers trouvés: "+str(len(list(chemin.glob('**/RD*')))))
 	print(datetime.datetime.now().time())
+	rapport_traitement.write("répertoire "+rep+" \r\n")
+	rapport_traitement.write("nombre de fichiers trouvés: "+str(len(list(chemin.glob('**/RD*'))))+" \r\n")
+	rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 	# on ne teste pas s'il y a des fichiers qui ne commencent pas par RD
 	for fichier in list(chemin.glob('**/RD*')):
 		nomfichier=fichier.name
 		# le nom de fichier est en principe RDxxx_100 ou 200
 		if len(nomfichier)!=9:
 			print("Fichier "+nomfichier+ " ignoré")
+			rapport_traitement.write("Fichier "+nomfichier+ " ignoré"+" \r\n")
 			continue
 		# pas d'extension
 		if "." in nomfichier or nomfichier[:2]!="RD" or not(nomfichier[-4:] in ["_100","_200"]):
 			print(nomfichier+": doublon ou mauvais type de fichier")
+			rapport_traitement.write(nomfichier+": doublon ou mauvais type de fichier"+" \r\n")
 			continue
 		hmvl2csv(str(fichier),nomcsv,nomlog=nomlog,stations=stations,a_or_w='a')
-
+"""
 @click.command()
 @click.option('--jour', prompt='jour:', help='string HHHH-MM-AA')
 @click.option('--nomcsv', prompt='Nom du fichier csv:', help='Nom du fichier csv à créer')
@@ -294,23 +334,27 @@ def rephmvl2csv(rep,nomcsv,nomlog,stations):
 @click.option('--pwd', prompt='Mdp base hmvl:', help='mot de passe postgresql')
 @click.option('--racine', prompt='Répertoire des données hmvl', 
 	default="..", help='Répertoire des données hmvl: . , .. , "../MM-AA" etc.')
-
 def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
+"""
+def jourhmvl2csv():
 # jour "AAAA-MM-JJ"
 # nomcsv : string du fichier csv (avec chemin) à créer pour les données de la journée jour
 # nomlog : string du chemin vers le fichier log
 # racine : répertoire d'où partir pour trouver les donneés rdc_0, rdc_1, labocom avec un sous-répertoire par jour
 	print(datetime.datetime.now().time())
+	rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 	path0=pathlib.Path(racine)
 	if len(jour)!= 10:
 		print("format de date d'entrée: AAAA-MM-JJ")
+		rapport_traitement.write("format de date d'entrée: AAAA-MM-JJ"+" \r\n")
 		return
 	if not pathlib.Path.exists(path0 / "rdc_0" / jour):
 		print("Le répertoire rdc_0/"+jour+" n'existe pas.")
+		rapport_traitement.write("Le répertoire rdc_0/"+jour+" n'existe pas."+" \r\n")
 		return
 	# pas besoin de lire les codes de station pour l'export CSV mais on les lit quand même
 	# stations est passé en paramètre à hmvl2pg pour ne pas être lu n fois
-	connection = psycopg2.connect(user="dirmed", password=pwd, host="127.0.0.1", \
+	connection = psycopg2.connect(user="postgres", password=pwd, host="127.0.0.1", \
 		port="5432", database="hmvl")
 	# lecture des codes des stations
 	cursor = connection.cursor()
@@ -326,23 +370,33 @@ def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
 	if not(nomlog is None):
 		if pathlib.Path(nomlog).exists:
 			print("ATTENTION : le fichier log existe,"+nomlog+" on va écrire à la fin fichier")
+			rapport_traitement.write("ATTENTION : le fichier log existe,"+nomlog+" on va écrire à la fin fichier"+" \r\n")
 		else:
 			with open(nomlog,"w") as flog:
 				fw=csv.writer(flog,delimiter=',', quotechar='"')
 				fw.writerow(("fichier","horodate_exportcsv","nb_mesures"))
 	# boucle sur les répertoires du jour 'HH-MM'
-	header=["hdt0","hdt","station","status","voie","vitesse","longueur","statutTR"]
+	header=["dt_texte","dt_unix","station","status","voie","vitesse","longueur","statutTR"]
 	with open(nomcsv,"w") as fcsv:
 		fwriter = csv.writer(fcsv, delimiter=',', quotechar='"')
 		fwriter.writerow(header)
 	for rep in list((path0 / "rdc_0" / jour).glob('*')):
 		print(datetime.datetime.now().time())
+		rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 		rephmvl2csv(str(rep),nomcsv,nomlog,stations)
 	for rep in list((path0 / "rdc_1" / jour).glob('*')):
 		print(datetime.datetime.now().time())
+		rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 		rephmvl2csv(str(rep),nomcsv,nomlog,stations)
 	replabocom2csv(jour,str(path0/"Labocom"/jour),nomcsv,nomlog)
 	print(datetime.datetime.now().time())
+	rapport_traitement.write(str(datetime.datetime.now().time())+" \r\n")
 
 if __name__ == '__main__':
 	jourhmvl2csv()
+
+rapport_traitement.close()
+
+test= open(chemin + "\\testjhmvl.txt", "w")
+test.write(str("jourhmvl2csv exécuté sans erreur fatale"))
+test.close()
