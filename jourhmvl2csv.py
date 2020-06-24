@@ -83,7 +83,8 @@ def hmvl2csv(f,nomcsv,nomlog=None,stations=None,a_or_w='w'):
 			for i in range(n):
 				c11=reponse[i*11:17+i*11]
 				numvoie=c11[0]
-				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1:3]),microseconds=int(c11[3:5])*10000)
+#				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1:3]),microseconds=int(c11[3:5])*10000)
+				dt_unix=dt_unix0+datetime.timedelta(seconds=int(c11[1]),microseconds=int(c11[2:5])*1000)
 				vitesse=c11[5:8]
 				if vitesse=='   ' or vitesse=="":
 					vitesse=None
@@ -308,7 +309,7 @@ def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
 	if not pathlib.Path.exists(path0 / "rdc_0" / jour):
 		print("Le répertoire rdc_0/"+jour+" n'existe pas.")
 		return
-	# pas besoin de lire les codes de station pour l'export CSV mais on les lit quand même
+	# pas indispensable de lire les codes de station pour l'export CSV mais ça permet d'afficher un code RGS à 3 car plus explicité
 	# stations est passé en paramètre à hmvl2pg pour ne pas être lu n fois
 	connection = psycopg2.connect(user="dirmed", password=pwd, host="127.0.0.1", \
 		port="5432", database="hmvl")
