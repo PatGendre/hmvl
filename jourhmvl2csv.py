@@ -167,7 +167,7 @@ def labocom2csv(jour,f,nomcsv,nomlog=None,a_or_w='w'):
 				continue		
 			if reponse[0:2]!="T:":
 				print("WARNING: trame sans T: !!!")
-				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"5",None,None,None,None)
+				mesure = (dt_unix0.isoformat(),dt_unix0.isoformat(),indexstn,"3",None,None,None,None)
 				liste_mesures.append(mesure)
 				continue
 			if not all((c in chars) for c in reponse):

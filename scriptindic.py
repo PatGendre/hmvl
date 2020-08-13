@@ -24,6 +24,10 @@ def lirejourhmvl(jour,host,port,dbname,username,pwd):
 
 def indicqualite(hmvl):
 	# création d'un dataframe d'indicateurs qualité, exportable ensuite en CSV et/ou en BD postgres
+	# seuils de longueurs et vitesse aberrantes "en dur"
+	Lmin=0.5
+	Lmax=25.0
+	Vmin=250.0
 	nbmes=hmvl.assign(heure=pd.to_datetime(hmvl['hdt']).dt.to_period('H'))
 	nbmes=nbmes.groupby(['station','heure']).count().sort_values(by='station')
 	nbmes=nbmes.rename(columns={'hdt':'nb_mes','vitesse':'nbmesvit','longueur':'nbmeslong'})
@@ -49,6 +53,16 @@ def indicqualite(hmvl):
 	sansvoie=sansvoie.groupby(['station','heure']).count().sort_values(by='station')
 	sansvoie=sansvoie.rename(columns={'hdt':'nb_sansvoie'})['nb_sansvoie']
 	qualite=pd.merge(qualite,sansvoie,on=['station','heure'],how='outer')
+	long_aberrante=hmvl[(hmvl['longueur']<Lmin) | (hmvl['longueur']>Lmax)][["station","hdt"]]
+	long_aberrante=long_aberrante.assign(heure=pd.to_datetime(long_aberrante['hdt']).dt.to_period('H'))
+	long_aberrante=long_aberrante.groupby(['station','heure']).count().sort_values(by='station')
+	long_aberrante=long_aberrante.rename(columns={'hdt':'nb_l_aberr'})
+	qualite=pd.merge(qualite,long_aberrante,on=['station','heure'],how='outer')
+	vit_aberrante=hmvl[hmvl['vitesse']>Vmax][["station","hdt"]]
+	vit_aberrante=vit_aberrante.assign(heure=pd.to_datetime(vit_aberrante['hdt']).dt.to_period('H'))
+	vit_aberrante=vit_aberrante.groupby(['station','heure']).count().sort_values(by='station')
+	vit_aberrante=vit_aberrante.rename(columns={'hdt':'nb_v_aberr'})
+	qualite=pd.merge(qualite,vit_aberrante,on=['station','heure'],how='outer')
 	qualite=qualite.fillna(0.0)
 	return qualite
 
@@ -58,6 +72,13 @@ def agreg6(x):
 	# on enlève les mesures sans voie
 	x=x[(x["status"]=="0")|(x["status"].isna())][["id","hdt0","hdt","station","voie","vitesse","longueur","statuttr"]]
 	# on enlève les mesures de status 1,2,3,4
+	Lmin=0.5
+	Lmax=25.0
+	Vmax=250.0
+	x=x[(x['vitesse']<Vmax)]
+	x=x[(x['longueur']>Lmin)]
+	x=x[(x['longueur']<Lmax)]
+	# on enlève les vitesses et longueurs aberrantes
 	x = x.set_index('hdt')
 	x['vitesse']=np.where(np.isclose(0.0,x['vitesse'].values),1.0,x['vitesse'].values)    
 	x['invvit']=x['vitesse'].apply(lambda v: 1/v)
