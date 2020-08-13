@@ -90,7 +90,7 @@ def tramesmanquantes(x,jour):
 	trames6enplus=set(t0)-set(t6)
 	return len(trames6communes, trames6enplus, trames6absentes)
 
-def ecrirequalite(q):
+def ecrirequalite(q,pwd):
 	# fonction écrivant les indicateurs qualité en base : dataframe produit par la fonction indicqualite
 	# suppose qu'existe la table indic avec le même schéma (colonnes)
 	from sqlalchemy import create_engine
@@ -101,19 +101,19 @@ def ecrirequalite(q):
 	q.nb_sansvoie=q.nb_sansvoie.astype('int')
 	q.station=q.station.astype('string')
 	q.heure=q.heure.apply(lambda d: pd.to_datetime(str(d)))
-	engine = create_engine('postgresql+psycopg2://dirmed:marius@localhost:5432/hmvl')
+	engine = create_engine('postgresql+psycopg2://dirmed:'+pwd+'@localhost:5432/hmvl')
 	connection = engine.connect()
 	q.to_sql('indic', connection, index=False, if_exists='append')
 	connection.close()
 
-def ecrireagreg6(m):
+def ecrireagreg6(m,pwd):
 	# fonction écrivant les données agrégées 6' en base : en entrée dataframe produit par la fonction agreg6
 	# suppose qu'existe la table moy6 avec le même schéma (colonnes)
 	# pour l'instant l'horodate est encodée comme une string en base
 	from sqlalchemy import create_engine
 	m=m.reset_index()
 	m.station=m.station.astype('string')
-	engine = create_engine('postgresql+psycopg2://dirmed:marius@localhost:5432/hmvl')
+	engine = create_engine('postgresql+psycopg2://dirmed:'+pwd+'@localhost:5432/hmvl')
 	connection = engine.connect()
 	m.to_sql('moy6', connection, index=False, if_exists='append')
 	connection.close()
