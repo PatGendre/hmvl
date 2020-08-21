@@ -7,6 +7,7 @@ import arrow
 import psycopg2
 import pandas as pd
 import numpy as np
+from dateutil import tz
 
 def lirejourhmvl(jour,host,port,dbname,username,pwd):
 	# import arrow
@@ -18,16 +19,63 @@ def lirejourhmvl(jour,host,port,dbname,username,pwd):
 	sql = "select * from hmvl where hdt >= '"+jour+"' and hdt < '"+lendemain+"';"
 	x = pd.read_sql_query(sql, conn)
 	conn = None
+	# on supprime les colonnes hdt0 et id pour s'aligner sur les colonnes du fichier csv
+	x=x.drop(columns=['hdt0','id'])
 	x['hdt']=x['hdt'].apply(lambda x: x.tz_convert('Europe/Paris'))
-	x['hdt0']=x['hdt0'].apply(lambda x: x.tz_convert('Europe/Paris'))
+	# on remplace par des types de données moins gourmands en mémoire suite aux gains de perf constatés sur données csv
+	x['station']=x['station'].astype('category')
+	x['status']=x['status'].astype('category')
+	x['voie']=x['voie'].astype('category')
+	x['statuttr']=x['statuttr'].astype('category')
+	x['vitesse']=x['vitesse'].astype('float32')
+	x['longueur']=x['longueur'].astype('float32')
 	return x
+	# TODO convertir les types de données pour limiter la mémoire : category, float32
+
+# il est possible de lire aussi les données depuis un fichier csv produit par lirejourhmvl
+def lirecsvhmvl(nomfichier):
+    print(pd.Timestamp.now())
+    hmvl = pd.read_csv(nomfichier,
+                       dtype= {"station":'category', "status":'category', 
+                               "voie":'category', "vitesse": 'float32', "longueur" : 'float32', "statuttr":'category'} ,
+                       parse_dates=['hdt'], cache_dates=True, date_parser=lambda x: pd.to_datetime(x, utc=True))
+    print(str(pd.Timestamp.now())+' après lecture du csv')
+    hmvl['hdt']=hmvl['hdt'].dt.tz_convert('Europe/Paris')
+    return hmvl
+# les champs hdt0 et ID ne figurent pas dans le fichier csv: le champ hdt est un string qu'il faut convertir en timestamp
+# PB : LENTEUR de traitement du fichier csv d'une journée, en juillet env 7M lignes, 330 Mo
+# apparemment résolu par la dernière version avec date_parser=lambda x: pd.to_datetime(x, utc=True)
+# la lecture de ne prend plus que 30 secondes au lieu de 10 minutes
+# il reste ensuite à convertir hdt en timezone Paris
+
+# la lecture prend quelques secondes mais la conversion du champ hdt string en datetime prend plusieurs minutes dans pandas
+# malgré la recherche de solutions https://stackoverflow.com/questions/29882573/pandas-slow-date-conversion/59682653#59682653
+# pas trouvé de solution:
+# 1) lecture du csv avec conversion directe des datetime
+# hmvl=pd.read_csv(chemin+'2020-07-22.csv',parse_dates=['hdt'], cache_dates=True, infer_datetime_format=True)
+# 2) lecture d'abord du csv puis conversion
+# hmvl=pd.read_csv(chemin+'2020-07-22.csv')
+# hmvl['hdt']=pd.to_datetime(hmvl['hdt'],cache=True,infer_datetime_format=True)
+# 2) lecture csv puis conversion via arrow
+# from dateutil import tz
+# hmvl['hdt']=hmvl['hdt'].apply(lambda x: arrow.get(x, tzinfo=tz.gettz('Europe/Paris')).datetime)
+# 4) choix d'un format a priori
+# hmvl=pd.read_csv(chemin+'2020-07-22.csv')
+# hmvl['hdt']=pd.to_datetime(hmvl['hdt'],cache=True,format='%Y-%m-%dT%H:%M:%S.%f')
+# ne fonctionne pas car LE FORMAT DES DATES N'EST PAS UNIFORME:
+# - pour les stations Labocom est ajouté la timezone (+02:00)
+# - quand on est sur une seconde "pile", les microsecondes .SSSSSS ne sont pas présentes
+# à voir si en uniformisant le format (dans le script d'export csv) ça permettrai une conversion plus rapide
+#   des strings en datetime avec un format fixe, mais quelques tests semblent montrer que non?
+
 
 def indicqualite(hmvl):
 	# création d'un dataframe d'indicateurs qualité, exportable ensuite en CSV et/ou en BD postgres
 	# seuils de longueurs et vitesse aberrantes "en dur"
 	Lmin=0.5
 	Lmax=25.0
-	Vmin=250.0
+	Vmax=250.0
+	# ajout d'une colonne heure pour les regroupements
 	nbmes=hmvl.assign(heure=pd.to_datetime(hmvl['hdt']).dt.to_period('H'))
 	nbmes=nbmes.groupby(['station','heure']).count().sort_values(by='station')
 	nbmes=nbmes.rename(columns={'hdt':'nb_mes','vitesse':'nbmesvit','longueur':'nbmeslong'})
@@ -64,13 +112,28 @@ def indicqualite(hmvl):
 	vit_aberrante=vit_aberrante.rename(columns={'hdt':'nb_v_aberr'})
 	qualite=pd.merge(qualite,vit_aberrante,on=['station','heure'],how='outer')
 	qualite=qualite.fillna(0.0)
+	# calcul des taux de "trames" (fichiers RD) absents
+	hmvl = hmvl.set_index('hdt')
+	x=hmvl.groupby(['station'])['status'].resample('6S').size()
+	# on compte le nombre de lignes mesurées pour chaque période de secondes
+	# si on trouve 0 le fichier 6 secondes n'a pas été transmis, si on trouve >0 le fichier n'a pas été transmis pour cette horodate
+	x[x>0] = 1
+	x=x.reset_index()
+	y=x.assign(heure=x['hdt'].dt.to_period('H'))
+	y=y.set_index('hdt')
+	y=y.groupby(['station','heure']).sum()
+	y=y.rename(columns={'status':'taux_trames_absentes'})
+	y=(100.*(1.0-y/600.0)).round(2)
+	y=y.reset_index()
+	qualite=qualite.reset_index()
+	qualite=pd.merge(qualite,y,on=['station','heure'],how='outer')
 	return qualite
 
 def agreg6(x):
 	#agrégation de mesures 6 minutes d'un dataframe x représentant un jour de données hmvl lues par lirejourhmvl
 	x=x[x["voie"].notna()]
 	# on enlève les mesures sans voie
-	x=x[(x["status"]=="0")|(x["status"].isna())][["id","hdt0","hdt","station","voie","vitesse","longueur","statuttr"]]
+	x=x[(x["status"]=="0")|(x["status"].isna())][["hdt","station","voie","vitesse","longueur","statuttr"]]
 	# on enlève les mesures de status 1,2,3,4
 	Lmin=0.5
 	Lmax=25.0
@@ -91,6 +154,7 @@ def agreg6(x):
 	moy6=moy6.apply(lambda x: round(x,2))
 	return moy6
 
+## CODE tramesmanquantes OBSOLETE
 def tramesmanquantes(x,jour):
 	# comptage des trames manquantes dans une journée de données hmvl lue dans un dataframe x avec la fn lirejourhmvl
 	h0=x['hdt0'].unique()
@@ -111,6 +175,8 @@ def tramesmanquantes(x,jour):
 	trames6enplus=set(t0)-set(t6)
 	return len(trames6communes, trames6enplus, trames6absentes)
 
+# CODE ecrire qualite OBSOLETE : a priori pas de besoin de stocker les indicateurs en base
+# les indicateurs seront stockés dans des fichiers journaliers
 def ecrirequalite(q,pwd):
 	# fonction écrivant les indicateurs qualité en base : dataframe produit par la fonction indicqualite
 	# suppose qu'existe la table indic avec le même schéma (colonnes)
@@ -127,6 +193,8 @@ def ecrirequalite(q,pwd):
 	q.to_sql('indic', connection, index=False, if_exists='append')
 	connection.close()
 
+# CODE ecrire qualite OBSOLETE : a priori pas de besoin de stocker les données 6 minutes en base
+# les indicateurs 6' seront stockées dans des fichiers journaliers
 def ecrireagreg6(m,pwd):
 	# fonction écrivant les données agrégées 6' en base : en entrée dataframe produit par la fonction agreg6
 	# suppose qu'existe la table moy6 avec le même schéma (colonnes)
