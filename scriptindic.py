@@ -34,14 +34,14 @@ def lirejourhmvl(jour,host,port,dbname,username,pwd):
 
 # il est possible de lire aussi les données depuis un fichier csv produit par lirejourhmvl
 def lirecsvhmvl(nomfichier):
-    print(pd.Timestamp.now())
-    hmvl = pd.read_csv(nomfichier,
-                       dtype= {"station":'category', "status":'category', 
-                               "voie":'category', "vitesse": 'float32', "longueur" : 'float32', "statuttr":'category'} ,
-                       parse_dates=['hdt'], cache_dates=True, date_parser=lambda x: pd.to_datetime(x, utc=True))
-    print(str(pd.Timestamp.now())+' après lecture du csv')
-    hmvl['hdt']=hmvl['hdt'].dt.tz_convert('Europe/Paris')
-    return hmvl
+	print(pd.Timestamp.now())
+	hmvl = pd.read_csv(nomfichier,
+					   dtype= {"station":'category', "status":'category', 
+							   "voie":'category', "vitesse": 'float32', "longueur" : 'float32', "statuttr":'category'} ,
+					   parse_dates=['hdt'], cache_dates=True, date_parser=lambda x: pd.to_datetime(x, utc=True))
+	print(str(pd.Timestamp.now())+' après lecture du csv')
+	hmvl['hdt']=hmvl['hdt'].dt.tz_convert('Europe/Paris')
+	return hmvl
 # les champs hdt0 et ID ne figurent pas dans le fichier csv: le champ hdt est un string qu'il faut convertir en timestamp
 # PB : LENTEUR de traitement du fichier csv d'une journée, en juillet env 7M lignes, 330 Mo
 # apparemment résolu par la dernière version avec date_parser=lambda x: pd.to_datetime(x, utc=True)
@@ -74,7 +74,7 @@ def indicqualite(hmvl):
 	# seuils de longueurs et vitesse aberrantes "en dur"
 	Lmin=0.5
 	Lmax=25.0
-	Vmax=250.0
+	Vmax=240.0
 	# ajout d'une colonne heure pour les regroupements
 	nbmes=hmvl.assign(heure=pd.to_datetime(hmvl['hdt']).dt.to_period('H'))
 	nbmes=nbmes.groupby(['station','heure']).count().sort_values(by='station')
@@ -129,6 +129,36 @@ def indicqualite(hmvl):
 	qualite=pd.merge(qualite,y,on=['station','heure'],how='outer')
 	return qualite
 
+def tiv(x):
+	# fonction ajoutant 1 colonne temps inter-véhiculaire et durée inter-véhiculaire au dataframe hmvl
+	x=x[x["voie"].notna()]
+	# on enlève les mesures sans voie
+	x=x[(x["status"]=="0")|(x["status"].isna())][["hdt","station","voie","vitesse","longueur","statuttr"]]
+	# on enlève les mesures de status 1,2,3,4
+	x=x.sort_values(['station','voie','hdt'])
+	x['tiv']=(x['hdt']-x['hdt'].shift()).fillna(pd.Timedelta(seconds=0))
+	#https://stackoverflow.com/questions/16777570/
+	x['diff']=(x['voie'] != x['voie'].shift())
+	# on a classé par station et voie, on enlève les lignes où la ligne précédente avait une valeur de voie différente
+	x= x[x['diff']==False]
+	del x['diff']
+	x['tiv'] = pd.to_timedelta(x.tiv, errors='coerce').dt.total_seconds()
+	x['div']=round(x['vitesse']*x['tiv']/3.6)
+	return x
+
+def agregtdiv1H(x):
+	# agrégation des TIV/DIV par heure et par voie d'un dataframe x représentant un jour de données hmvl lues par lirejourhmvl
+	# et traitées par la fonction tiv qui ajoute des colonnes TIV et DIV
+	# PROPOSITION : on pourrait ajouter une colonne tauxtiv1s avec le taux en % de TIV inférieurs à 1 seconde
+	x = tiv(x)
+	x = x.set_index('hdt')
+	tdiv1H=x.groupby(['station','voie'])['tiv','div'].resample('1H').mean()
+	tdiv1H=tdiv1H.apply(lambda x: round(x,2))
+	tdiv1H=tdiv1H.reset_index()
+	tdiv1H['hdt']=tdiv1H['hdt'].dt.to_period('H')
+	tdiv1H=tdiv1H.rename(columns={'hdt':'heure'})
+	return tdiv1H
+
 def agreg6(x):
 	#agrégation de mesures 6 minutes d'un dataframe x représentant un jour de données hmvl lues par lirejourhmvl
 	x=x[x["voie"].notna()]
@@ -151,6 +181,7 @@ def agreg6(x):
 	moy6q=x.groupby(['station'])['vitesse'].resample('6Min').size()
 	moy6=pd.merge(moy6,moy6q,on=['station','hdt'],how='outer')
 	moy6=moy6.rename(columns={'invvit':'v6','longueur':'l6','vitesse':'q6'})
+
 	moy6=moy6.apply(lambda x: round(x,2))
 	return moy6
 
@@ -215,3 +246,33 @@ def tocsv(m,file):
 	# pour l'instant l'horodate est encodée comme une string en base
 	m=m.reset_index()
 	m.to_csv(path_or_buf=file, index=False)
+
+# détection de stations en alertes sur les indicateurs qualité
+# on part d'un dataframe q fourni par la fonction indicqualite
+def alertes(q):
+	LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']
+	if 'nb_mes' in q.columns:
+		q0=q[q['nb_mes']==0]
+		if len(q0)>0:
+			print ('Stations sans aucune mesure: '+str(q0['station'].unique()))
+	# pour cette 1er version on définit des seuils sur les valeurs moyennes de certains % taux d'erreurs constatées par heure
+	q=q.assign(t2=q['nb_status2']/q['nb_mes'])
+	q['t2']=q['t2'].apply(lambda x: round(100.0*x,1))
+	q=q.assign(t1=q['nb_status1']/q['nb_mes'])
+	x=q.groupby(['station'])['t2'].mean().sort_values()
+	print("Stations avec taux moyen de status2 > 50% :" + str(x[x>50.0].index.tolist()))
+	q['t1']=q['t1'].apply(lambda x: round(100.0*x,1))
+	x=q.groupby(['station'])['t1'].mean().sort_values()
+	print("Stations avec taux moyen de status1 > 50% :" + str(x[x>50.0].index.tolist()))
+	q=q.assign(tsv=q['nb_sansvoie']/q['nb_mes'])
+	q['tsv']=q['tsv'].apply(lambda x: round(100.0*x,1))
+	x=q.groupby(['station'])['tsv'].mean().sort_values()
+	print("Stations avec taux moyen de mesures sans valeurs (L, V, voie) > 50% :" + str(x[x>50.0].index.tolist()))
+	q=q.assign(tva=q['nb_v_aberr']/q['nb_mes'])
+	q['tva']=q['tva'].apply(lambda x: round(100.0*x,1))
+	x=q.groupby(['station'])['tva'].mean().sort_values()
+	print("Stations avec taux moyen de vitesses aberrantes (240km/h) > 2% :" + str(x[x>2.0].index.tolist()))
+	x=q.groupby(['station'])['taux_trames_absentes'].mean().sort_values()
+	print("Stations RD (non Labocom) avec taux mpyen de trames 6 sec non reçues > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM)))
+	# on pourrait plutôt lister pour chaque station en alerte, son axe (A7, etc.) et les alertes constatées
+	# beaucoup d'alertes concernent les mêmes stations
