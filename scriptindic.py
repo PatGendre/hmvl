@@ -8,6 +8,7 @@ import psycopg2
 import pandas as pd
 import numpy as np
 from dateutil import tz
+import click
 
 def lirejourhmvl(jour,host,port,dbname,username,pwd):
 	# import arrow
@@ -30,7 +31,6 @@ def lirejourhmvl(jour,host,port,dbname,username,pwd):
 	x['vitesse']=x['vitesse'].astype('float32')
 	x['longueur']=x['longueur'].astype('float32')
 	return x
-	# TODO convertir les types de données pour limiter la mémoire : category, float32
 
 # il est possible de lire aussi les données depuis un fichier csv produit par lirejourhmvl
 def lirecsvhmvl(nomfichier):
@@ -251,28 +251,41 @@ def tocsv(m,file):
 # on part d'un dataframe q fourni par la fonction indicqualite
 def alertes(q):
 	LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']
+	texte=""
 	if 'nb_mes' in q.columns:
 		q0=q[q['nb_mes']==0]
 		if len(q0)>0:
-			print ('Stations sans aucune mesure: '+str(q0['station'].unique()))
+			texte=texte+'\n'+'Stations sans aucune mesure: '+str(q0['station'].unique())
+			print (texte)
 	# pour cette 1er version on définit des seuils sur les valeurs moyennes de certains % taux d'erreurs constatées par heure
 	q=q.assign(t2=q['nb_status2']/q['nb_mes'])
 	q['t2']=q['t2'].apply(lambda x: round(100.0*x,1))
 	q=q.assign(t1=q['nb_status1']/q['nb_mes'])
 	x=q.groupby(['station'])['t2'].mean().sort_values()
-	print("Stations avec taux moyen de status2 > 50% :" + str(x[x>50.0].index.tolist()))
+	t="Stations avec taux moyen de status2 > 50% :" + str(x[x>50.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
 	q['t1']=q['t1'].apply(lambda x: round(100.0*x,1))
 	x=q.groupby(['station'])['t1'].mean().sort_values()
-	print("Stations avec taux moyen de status1 > 50% :" + str(x[x>50.0].index.tolist()))
+	t="Stations avec taux moyen de status1 > 50% :" + str(x[x>50.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
 	q=q.assign(tsv=q['nb_sansvoie']/q['nb_mes'])
 	q['tsv']=q['tsv'].apply(lambda x: round(100.0*x,1))
 	x=q.groupby(['station'])['tsv'].mean().sort_values()
-	print("Stations avec taux moyen de mesures sans valeurs (L, V, voie) > 50% :" + str(x[x>50.0].index.tolist()))
+	t="Stations avec taux moyen de mesures sans valeurs (L, V, voie) > 50% :" + str(x[x>50.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
 	q=q.assign(tva=q['nb_v_aberr']/q['nb_mes'])
 	q['tva']=q['tva'].apply(lambda x: round(100.0*x,1))
 	x=q.groupby(['station'])['tva'].mean().sort_values()
-	print("Stations avec taux moyen de vitesses aberrantes (240km/h) > 2% :" + str(x[x>2.0].index.tolist()))
+	t="Stations avec taux moyen de vitesses aberrantes (240km/h) > 2% :" + str(x[x>2.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
 	x=q.groupby(['station'])['taux_trames_absentes'].mean().sort_values()
-	print("Stations RD (non Labocom) avec taux mpyen de trames 6 sec non reçues > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM)))
+	t="Stations RD (non Labocom) avec taux moyen de trames 6 sec non reçues > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM))
+	texte=texte+'\n'+t
+	print(t)
+	return texte
 	# on pourrait plutôt lister pour chaque station en alerte, son axe (A7, etc.) et les alertes constatées
 	# beaucoup d'alertes concernent les mêmes stations
