@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""jourhmvl2csv.py: lecture de fichiers du répertoire d'un jour hmvl VRU Marius6 secondes et écriture dans une BD pg, cf. github.com/patgendre/hmvl """
+"""jourhmvl2csv.py: lecture de fichiers du répertoire d'un jour hmvl VRU Marius6 secondes et écriture dans un fichier csv, cf. github.com/patgendre/hmvl """
 
 # patrick gendre 14/05/20
 # 
@@ -300,6 +300,7 @@ def jourhmvl2csv(jour,nomcsv,nomlog,pwd,racine=".."):
 # jour "AAAA-MM-JJ"
 # nomcsv : string du fichier csv (avec chemin) à créer pour les données de la journée jour
 # nomlog : string du chemin vers le fichier log
+# pwd : password d'accès à la base postgres contenant les codes des stations
 # racine : répertoire d'où partir pour trouver les donneés rdc_0, rdc_1, labocom avec un sous-répertoire par jour
 	print(datetime.datetime.now().time())
 	path0=pathlib.Path(racine)

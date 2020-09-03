@@ -177,7 +177,7 @@ def agreg6(x):
 	x['invvit']=x['vitesse'].apply(lambda v: 1/v)
 	moy6=x.groupby(['station'])['longueur','invvit'].resample('6Min').mean()
 	moy6['invvit']=moy6['invvit'].apply(lambda v: 1/v)
-	# je n'ai pas réussi à faire marcher la fonction stats.hmean de scipy
+	# pour la moyenne harmonique des vitesses : je n'ai pas réussi à faire marcher la fonction stats.hmean de scipy
 	moy6q=x.groupby(['station'])['vitesse'].resample('6Min').size()
 	moy6=pd.merge(moy6,moy6q,on=['station','hdt'],how='outer')
 	moy6=moy6.rename(columns={'invvit':'v6','longueur':'l6','vitesse':'q6'})
