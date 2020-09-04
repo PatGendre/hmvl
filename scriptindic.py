@@ -69,8 +69,9 @@ def lirecsvhmvl(nomfichier):
 #   des strings en datetime avec un format fixe, mais quelques tests semblent montrer que non?
 
 
-def indicqualite(hmvl):
+def indicqualite(hmvl,LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']):
 	# création d'un dataframe d'indicateurs qualité, exportable ensuite en CSV et/ou en BD postgres
+	# passage par défaut de la liste des stations Labocom qui ne sont pas concernées par l'indicateurs fichiers RD 6 sec manquants
 	# seuils de longueurs et vitesse aberrantes "en dur"
 	Lmin=0.5
 	Lmax=25.0
@@ -78,8 +79,8 @@ def indicqualite(hmvl):
 	# ajout d'une colonne heure pour les regroupements
 	nbmes=hmvl.assign(heure=pd.to_datetime(hmvl['hdt']).dt.to_period('H'))
 	nbmes=nbmes.groupby(['station','heure']).count().sort_values(by='station')
-	nbmes=nbmes.rename(columns={'hdt':'nb_mes','vitesse':'nbmesvit','longueur':'nbmeslong'})
-	nbmes=nbmes[['nb_mes','nbmesvit','nbmeslong']]
+	nbmes=nbmes.rename(columns={'hdt':'nb_mes','vitesse':'nb_mesvit','longueur':'nb_meslong'})
+	nbmes=nbmes[['nb_mes','nb_mesvit','nb_meslong']]
 	status2=hmvl[hmvl["status"]=="2"][["station","hdt"]]
 	status2=status2.assign(heure=pd.to_datetime(status2['hdt']).dt.to_period('H'))
 	status2=status2.groupby(['station','heure']).count().sort_values(by='station')
@@ -116,34 +117,50 @@ def indicqualite(hmvl):
 	hmvl = hmvl.set_index('hdt')
 	x=hmvl.groupby(['station'])['status'].resample('6S').size()
 	# on compte le nombre de lignes mesurées pour chaque période de secondes
-	# si on trouve 0 le fichier 6 secondes n'a pas été transmis, si on trouve >0 le fichier n'a pas été transmis pour cette horodate
+	# si on trouve 0 le fichier 6 secondes n'a pas été transmis, 
+	# si on trouve >0 le fichier RD a bien été transmis pour cette horodate
 	x[x>0] = 1
 	x=x.reset_index()
+	x.drop(x[x['station'].isin(LABOCOM)].index,inplace=True)
 	y=x.assign(heure=x['hdt'].dt.to_period('H'))
 	y=y.set_index('hdt')
 	y=y.groupby(['station','heure']).sum()
-	y=y.rename(columns={'status':'taux_trames_absentes'})
+	y=y.rename(columns={'status':'taux_fichiersRD6sec_absents'})
 	y=(100.*(1.0-y/600.0)).round(2)
 	y=y.reset_index()
 	qualite=qualite.reset_index()
 	qualite=pd.merge(qualite,y,on=['station','heure'],how='outer')
+	# passage du nb de mesures en défaut au pourcentage par rapport au nb de total de lignes/mesures dans le fichier/dataframe hmvl
+	qualite.nb_mesvit=(100.0 * qualite.nb_mesvit / qualite.nb_mes).round(2)
+	qualite.nb_meslong=(100.0 * qualite.nb_meslong / qualite.nb_mes).round(2)
+	qualite.nb_status1=(100.0 * qualite.nb_status1 / qualite.nb_mes).round(2)
+	qualite.nb_status2=(100.0 * qualite.nb_status2 / qualite.nb_mes).round(2)
+	qualite.nb_status34=(100.0 * qualite.nb_status34 / qualite.nb_mes).round(2)
+	qualite.nb_sansvoie=(100.0 * qualite.nb_sansvoie / qualite.nb_mes).round(2)
+	qualite.nb_l_aberr=(100.0 * qualite.nb_v_aberr / qualite.nb_mes).round(2)
+	qualite.nb_l_aberr=(100.0 * qualite.nb_v_aberr / qualite.nb_mes).round(2)
 	return qualite
 
 def tiv(x):
 	# fonction ajoutant 1 colonne temps inter-véhiculaire et durée inter-véhiculaire au dataframe hmvl
+	# ATTENTION : suppose que hmvl en entrée (x) est pour 1 journée avec horodates (hdt) entre 00:00 et 23:59
+	if (x['hdt'].max() - x['hdt'].min() >= pd.Timedelta('1 days')):
+		print ("ATTENTION: le dataframe hmvl en entrée de tiv est sur + de 24H !!!")
 	x=x[x["voie"].notna()]
 	# on enlève les mesures sans voie
 	x=x[(x["status"]=="0")|(x["status"].isna())][["hdt","station","voie","vitesse","longueur","statuttr"]]
-	# on enlève les mesures de status 1,2,3,4
+	# on enlève les mesures de status 1,2,3,4   (status vide : stations labocom)
 	x=x.sort_values(['station','voie','hdt'])
-	x['tiv']=(x['hdt']-x['hdt'].shift()).fillna(pd.Timedelta(seconds=0))
+	x['tiv']=(x['hdt']-x['hdt'].shift())
+	# cf. https://stackoverflow.com/questions/16777570/
+	# on ne garde que les lignes qui ne sont pas vides (NaT : en fait la 1ère ligne, car .shift() est alors vide)
+	#   ou dont le tiv n'est pas négatif (on suppose qu'on travaille sur 1 journée de 00:00 à 23:59!!)
+	#   ou dont la voie est la même que la précédente (les données sont classées par voie, il faut donc
+	#   enlever les lignes de x dont la ligne précédente a une valeur de voie différente)
+	x=x[~(x['tiv'].isnull()) & (x['voie'] == x['voie'].shift()) & (x['tiv']>pd.Timedelta('0 days 00:00:00'))]
 	#https://stackoverflow.com/questions/16777570/
-	x['diff']=(x['voie'] != x['voie'].shift())
-	# on a classé par station et voie, on enlève les lignes où la ligne précédente avait une valeur de voie différente
-	x= x[x['diff']==False]
-	del x['diff']
 	x['tiv'] = pd.to_timedelta(x.tiv, errors='coerce').dt.total_seconds()
-	x['div']=round(x['vitesse']*x['tiv']/3.6)
+	x['div']=round(x['vitesse']*x['tiv']/3.6,1)
 	return x
 
 def agregtdiv1H(x):
@@ -255,35 +272,30 @@ def alertes(q):
 	if 'nb_mes' in q.columns:
 		q0=q[q['nb_mes']==0]
 		if len(q0)>0:
-			texte=texte+'\n'+'Stations sans aucune mesure: '+str(q0['station'].unique())
+			texte=texte+'\n'+'Stations au moins 1 heure sans aucune mesure: '+str(q0['station'].unique())
 			print (texte)
 	# pour cette 1er version on définit des seuils sur les valeurs moyennes de certains % taux d'erreurs constatées par heure
-	q=q.assign(t2=q['nb_status2']/q['nb_mes'])
-	q['t2']=q['t2'].apply(lambda x: round(100.0*x,1))
-	q=q.assign(t1=q['nb_status1']/q['nb_mes'])
+	q=q.assign(t2=q['nb_status2'])
+	q=q.assign(t1=q['nb_status1'])
 	x=q.groupby(['station'])['t2'].mean().sort_values()
 	t="Stations avec taux moyen de status2 > 50% :" + str(x[x>50.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
-	q['t1']=q['t1'].apply(lambda x: round(100.0*x,1))
 	x=q.groupby(['station'])['t1'].mean().sort_values()
 	t="Stations avec taux moyen de status1 > 50% :" + str(x[x>50.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
-	q=q.assign(tsv=q['nb_sansvoie']/q['nb_mes'])
-	q['tsv']=q['tsv'].apply(lambda x: round(100.0*x,1))
-	x=q.groupby(['station'])['tsv'].mean().sort_values()
+	q=q.assign(tsv=q['nb_sansvoie'])
 	t="Stations avec taux moyen de mesures sans valeurs (L, V, voie) > 50% :" + str(x[x>50.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
-	q=q.assign(tva=q['nb_v_aberr']/q['nb_mes'])
-	q['tva']=q['tva'].apply(lambda x: round(100.0*x,1))
+	q=q.assign(tva=q['nb_v_aberr'])
 	x=q.groupby(['station'])['tva'].mean().sort_values()
 	t="Stations avec taux moyen de vitesses aberrantes (240km/h) > 2% :" + str(x[x>2.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
-	x=q.groupby(['station'])['taux_trames_absentes'].mean().sort_values()
-	t="Stations RD (non Labocom) avec taux moyen de trames 6 sec non reçues > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM))
+	x=q.groupby(['station'])['taux_fichiersRD6sec_absents'].mean().sort_values()
+	t="Stations RD (non Labocom) avec taux moyen de fichiers RD 6 sec non reçus > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM))
 	texte=texte+'\n'+t
 	print(t)
 	return texte
