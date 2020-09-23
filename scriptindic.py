@@ -69,7 +69,7 @@ def lirecsvhmvl(nomfichier):
 #   des strings en datetime avec un format fixe, mais quelques tests semblent montrer que non?
 
 
-def indicqualite(hmvl,LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']):
+def indicqualite(hmvl,LABOCOM=['MPB','MPA','MPF','MPH','MPG','MPb','MPa','MPf','MPh','MPg','MBO','MBS','MBo','MBs','MBT','MBt']):
 	# création d'un dataframe d'indicateurs qualité, exportable ensuite en CSV et/ou en BD postgres
 	# passage par défaut de la liste des stations Labocom qui ne sont pas concernées par l'indicateurs fichiers RD 6 sec manquants
 	# seuils de longueurs et vitesse aberrantes "en dur"
@@ -97,7 +97,23 @@ def indicqualite(hmvl,LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']):
 	qualite=pd.merge(qualite,status1,on=['station','heure'],how='outer')
 	qualite=pd.merge(qualite,status34,on=['station','heure'],how='outer')
 	qualite=qualite.sort_index()
-	sansvoie=hmvl[hmvl["voie"].isna()][["station","hdt","statuttr"]]
+	# 23/09/20 : après discussin avec Cathy Taillandier, indicateur sur d'éventuelles valeurs de voie
+	# qui seraient absentes de la table association_voie_station, à remonter comme alerte
+	# et modif de la colonne sansvoie pour ne garder que des stations RD en status 0 (il ne devrait y avoir aucun avec la voie vide)
+	# et des stations Labocom sans mesure (il n'y a pas de status pour les stations labocom)
+	import collections
+	voie_s=collections.defaultdict(list)
+	avs=pd.read_csv('ressources/assoc-voie-station.csv')
+	for i in range(avs.shape[0]-1):
+		voie_s[avs.iloc[i,1]].append(avs.iloc[i,2])
+	vinex=hmvl.assign(v_inex=lambda x: x.voie in voie_s[str(x.station)])
+	vinex=vinex[["station","hdt","v_inex"]]
+	vinex['v_inex']=vinex['v_inex'].astype(int)
+	vinex=vinex.assign(heure=pd.to_datetime(vinex['hdt']).dt.to_period('H'))
+	vinex=vinex.groupby(['station','heure']).sum().sort_values(by='station')
+	vinex=vinex.rename(columns={'v_inex':'nb_vinex'})
+	qualite=pd.merge(qualite,vinex,on=['station','heure'],how='outer')
+	sansvoie=hmvl[hmvl["voie"].isna() & ((hmvl["status"]=='0')|hmvl["status"].isna())][["station","hdt","statuttr"]]
 	sansvoie=sansvoie.assign(heure=pd.to_datetime(sansvoie['hdt']).dt.to_period('H'))
 	sansvoie=sansvoie.groupby(['station','heure']).count().sort_values(by='station')
 	sansvoie=sansvoie.rename(columns={'hdt':'nb_sansvoie'})['nb_sansvoie']
@@ -136,6 +152,7 @@ def indicqualite(hmvl,LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']):
 	qualite.nb_status1=(100.0 * qualite.nb_status1 / qualite.nb_mes).round(2)
 	qualite.nb_status2=(100.0 * qualite.nb_status2 / qualite.nb_mes).round(2)
 	qualite.nb_status34=(100.0 * qualite.nb_status34 / qualite.nb_mes).round(2)
+	qualite.nb_vinex=(100.0 * qualite.nb_vinex / qualite.nb_mes).round(2)
 	qualite.nb_sansvoie=(100.0 * qualite.nb_sansvoie / qualite.nb_mes).round(2)
 	qualite.nb_l_aberr=(100.0 * qualite.nb_v_aberr / qualite.nb_mes).round(2)
 	qualite.nb_l_aberr=(100.0 * qualite.nb_v_aberr / qualite.nb_mes).round(2)
@@ -267,7 +284,7 @@ def tocsv(m,file):
 # détection de stations en alertes sur les indicateurs qualité
 # on part d'un dataframe q fourni par la fonction indicqualite
 def alertes(q):
-	LABOCOM=['MBS','MPH','MPB','MPA','MPG','MPF','MBO']
+	LABOCOM=['MPB','MPA','MPF','MPH','MPG','MPb','MPa','MPf','MPh','MPg','MBO','MBS','MBo','MBs','MBT','MBt']
 	texte=""
 	if 'nb_mes' in q.columns:
 		q0=q[q['nb_mes']==0]
@@ -277,25 +294,39 @@ def alertes(q):
 	# pour cette 1er version on définit des seuils sur les valeurs moyennes de certains % taux d'erreurs constatées par heure
 	q=q.assign(t2=q['nb_status2'])
 	q=q.assign(t1=q['nb_status1'])
+	q=q.assign(t34=q['nb_status34'])
 	x=q.groupby(['station'])['t2'].mean().sort_values()
-	t="Stations avec taux moyen de status2 > 50% :" + str(x[x>50.0].index.tolist())
+	t="Stations avec taux moyen de status2 (pas de réponse ou délai>150ms) > 70% :" + str(x[x>70.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
 	x=q.groupby(['station'])['t1'].mean().sort_values()
-	t="Stations avec taux moyen de status1 > 50% :" + str(x[x>50.0].index.tolist())
+	t="Stations avec taux moyen de trames vides (status1) > 50% :" + str(x[x>50.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
+	x=q.groupby(['station'])['t34'].mean().sort_values()
+	t="Stations avec taux moyen de trames incorrectes (status3,4) > 1% :" + str(x[x>1.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
 	q=q.assign(tsv=q['nb_sansvoie'])
-	t="Stations avec taux moyen de mesures sans valeurs (L, V, voie) > 50% :" + str(x[x>50.0].index.tolist())
+	t="Stations (en principe seulement Labocom) avec taux moyen de mesures sans valeurs (L, V, voie) > 20% :" + str(x[x>20.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
-	q=q.assign(tva=q['nb_v_aberr'])
-	x=q.groupby(['station'])['tva'].mean().sort_values()
-	t="Stations avec taux moyen de vitesses aberrantes (240km/h) > 2% :" + str(x[x>2.0].index.tolist())
+	q=q.assign(vinex=q['nb_vinex'])
+	t="Stations avec voie inexistante :" + str(x[x>0.001].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
+	q=q.assign(vva=q['nb_v_aberr'])
+	x=q.groupby(['station'])['vva'].mean().sort_values()
+	t="Stations avec taux moyen de vitesses aberrantes (>240km/h) > 2% :" + str(x[x>2.0].index.tolist())
+	texte=texte+'\n'+t
+	print(t)
+	q=q.assign(lva=q['nb_l_aberr'])
+	x=q.groupby(['station'])['lva'].mean().sort_values()
+	t="Stations avec taux moyen de longueurs aberrantes (<50cm ou >25m) > 2% :" + str(x[x>2.0].index.tolist())
 	texte=texte+'\n'+t
 	print(t)
 	x=q.groupby(['station'])['taux_fichiersRD6sec_absents'].mean().sort_values()
-	t="Stations RD (non Labocom) avec taux moyen de fichiers RD 6 sec non reçus > 20% :" + str(set(x[x>20.0].index.tolist())-set(LABOCOM))
+	t="Stations RD (non Labocom) avec taux moyen de fichiers RD 6 sec non reçus > 10% :" + str(set(x[x>10.0].index.tolist())-set(LABOCOM))
 	texte=texte+'\n'+t
 	print(t)
 	return texte
